@@ -1,0 +1,24 @@
+{
+  "version": "0.1.9",
+  "rag_lexical_ready": true,
+  "vector_ready": false,
+  "lora_started": false,
+  "approved_samples": 0,
+  "draft_samples": 30,
+  "heldout_prompts": 24,
+  "gpu": "AMD Radeon RX 6750 XT",
+  "training_backend_verified": false,
+  "original_weights_preserved": true,
+  "private_chats_used": false,
+  "blockers": [
+    "Official BGE-M3 CDN download denied by network guard",
+    "Claude batch requests rate limited; no 200-sample result",
+    "AMD training backend not verified",
+    "Synthetic style samples pending review"
+  ],
+  "current_quality": "retrieval functional; character expression and unsupported biographical claims not accepted",
+  "current_qq_version": "0.2.0",
+  "current_model": "si-qwen3.5:9b",
+  "inference_vulkan_verified": true,
+  "vram_reported_by_inference_engine_mib": 12272
+}

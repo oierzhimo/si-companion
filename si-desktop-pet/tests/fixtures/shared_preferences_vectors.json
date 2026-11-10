@@ -1,0 +1,79 @@
+{
+  "protocol": 1,
+  "vectors": [
+    {
+      "name": "empty",
+      "events": [],
+      "preferences": {},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "larger_lamport_wins",
+      "events": [
+        {"protocol": 1, "event_id": "alpha:1", "device_id": "alpha", "sequence": 1, "lamport": 2, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "小墨"}, "occurred_at": "2026-10-26T01:00:05Z"},
+        {"protocol": 1, "event_id": "zeta:1", "device_id": "zeta", "sequence": 1, "lamport": 7, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "管理员"}, "occurred_at": "2026-10-26T01:00:01Z"},
+        {"protocol": 1, "event_id": "beta:1", "device_id": "beta", "sequence": 1, "lamport": 5, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "阿墨"}, "occurred_at": "2026-10-26T01:00:09Z"}
+      ],
+      "preferences": {"preferred_name": "管理员"},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "same_lamport_device_order",
+      "events": [
+        {"protocol": 1, "event_id": "alpha:1", "device_id": "alpha", "sequence": 1, "lamport": 5, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "alpha-style"}, "occurred_at": "2026-10-26T02:00:00Z"},
+        {"protocol": 1, "event_id": "bravo:1", "device_id": "bravo", "sequence": 1, "lamport": 5, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "bravo-style"}, "occurred_at": "2026-10-26T02:00:01Z"},
+        {"protocol": 1, "event_id": "zulu:1", "device_id": "zulu", "sequence": 1, "lamport": 5, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "zulu-style"}, "occurred_at": "2026-10-26T02:00:02Z"}
+      ],
+      "preferences": {"greeting_style": "zulu-style"},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "same_device_sequence_lexical",
+      "events": [
+        {"protocol": 1, "event_id": "device-a:9", "device_id": "device-a", "sequence": 9, "lamport": 4, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "from-nine"}, "occurred_at": "2026-10-26T03:00:09Z"},
+        {"protocol": 1, "event_id": "device-a:10", "device_id": "device-a", "sequence": 10, "lamport": 4, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "from-ten"}, "occurred_at": "2026-10-26T03:00:10Z"}
+      ],
+      "preferences": {"greeting_style": "from-nine"},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "empty_value_is_kept",
+      "events": [
+        {"protocol": 1, "event_id": "phone:1", "device_id": "phone", "sequence": 1, "lamport": 3, "kind": "pref_set", "payload": {"key": "preferred_name", "value": ""}, "occurred_at": "2026-10-26T04:00:00Z"},
+        {"protocol": 1, "event_id": "phone:2", "device_id": "phone", "sequence": 2, "lamport": 2, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "旧称呼"}, "occurred_at": "2026-10-26T04:00:01Z"}
+      ],
+      "preferences": {"preferred_name": ""},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "unicode_values",
+      "events": [
+        {"protocol": 1, "event_id": "tablet-1:1", "device_id": "tablet-1", "sequence": 1, "lamport": 10, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "你好🖌️🎨"}, "occurred_at": "2026-10-26T05:00:00Z"},
+        {"protocol": 1, "event_id": "phone-1:1", "device_id": "phone-1", "sequence": 1, "lamport": 10, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "你好🖌️"}, "occurred_at": "2026-10-26T05:00:01Z"}
+      ],
+      "preferences": {"greeting_style": "你好🖌️🎨"},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "mixed_both_keys",
+      "events": [
+        {"protocol": 1, "event_id": "phone-2:1", "device_id": "phone-2", "sequence": 1, "lamport": 6, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "手机称呼"}, "occurred_at": "2026-10-26T06:00:00Z"},
+        {"protocol": 1, "event_id": "tablet-2:1", "device_id": "tablet-2", "sequence": 1, "lamport": 6, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "平板称呼"}, "occurred_at": "2026-10-26T06:00:01Z"},
+        {"protocol": 1, "event_id": "phone-2:2", "device_id": "phone-2", "sequence": 2, "lamport": 6, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "轻声"}, "occurred_at": "2026-10-26T06:00:02Z"},
+        {"protocol": 1, "event_id": "phone-2:3", "device_id": "phone-2", "sequence": 3, "lamport": 6, "kind": "pref_set", "payload": {"key": "greeting_style", "value": "简短"}, "occurred_at": "2026-10-26T06:00:03Z"}
+      ],
+      "preferences": {"preferred_name": "平板称呼", "greeting_style": "简短"},
+      "counts": {"pats": 0, "snacks": 0, "focus_sessions": 0, "affinity": 0}
+    },
+    {
+      "name": "counters_untouched",
+      "events": [
+        {"protocol": 1, "event_id": "mix:1", "device_id": "mix", "sequence": 1, "lamport": 1, "kind": "pat", "payload": {}, "occurred_at": "2026-10-26T07:00:00Z"},
+        {"protocol": 1, "event_id": "mix:2", "device_id": "mix", "sequence": 2, "lamport": 2, "kind": "snack", "payload": {}, "occurred_at": "2026-10-26T07:00:01Z"},
+        {"protocol": 1, "event_id": "mix:3", "device_id": "mix", "sequence": 3, "lamport": 3, "kind": "pref_set", "payload": {"key": "preferred_name", "value": "混合"}, "occurred_at": "2026-10-26T07:00:02Z"}
+      ],
+      "preferences": {"preferred_name": "混合"},
+      "counts": {"pats": 1, "snacks": 1, "focus_sessions": 0, "affinity": 4}
+    }
+  ]
+}

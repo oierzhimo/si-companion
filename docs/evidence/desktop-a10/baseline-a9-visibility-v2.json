@@ -1,0 +1,11 @@
+{
+  "tests": 3,
+  "failures": 4,
+  "errors": 0,
+  "failed_cases": [
+    "test_hidden_and_fullscreen_bodies_do_not_wander (baseline_visibility_v2.VisibilityTests.test_hidden_and_fullscreen_bodies_do_not_wander) (flag='hidden')",
+    "test_hidden_and_fullscreen_bodies_do_not_wander (baseline_visibility_v2.VisibilityTests.test_hidden_and_fullscreen_bodies_do_not_wander) (flag='presentation_suppressed')",
+    "test_manual_hide_cancels_drag_and_preserves_manual_hide (baseline_visibility_v2.VisibilityTests.test_manual_hide_cancels_drag_and_preserves_manual_hide)",
+    "test_fullscreen_mid_drag_does_not_leave_drag_stuck (baseline_visibility_v2.VisibilityTests.test_fullscreen_mid_drag_does_not_leave_drag_stuck)"
+  ]
+}

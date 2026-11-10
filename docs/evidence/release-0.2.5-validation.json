@@ -1,0 +1,52 @@
+{
+  "version": "0.2.5",
+  "tests": 444,
+  "frozen_source_match": {
+    "main": true,
+    "core": true,
+    "group_core": true,
+    "onebot_adapter": true,
+    "model_connection": true,
+    "service_reply": true,
+    "voice_reply": true,
+    "reply_settings": true,
+    "outbound_images": true,
+    "image_prompt": true,
+    "image_review": true,
+    "local_resources": true
+  },
+  "frozen_smoke": true,
+  "baseline_chinese": "unrelated anime person",
+  "baseline_english": "one red cup on blue table",
+  "translated_strict_anime": "failed: extra cup and weak table boundary",
+  "translated_strict_general": "failed review: position/background mismatch",
+  "translated_basic_general": {
+    "seconds": 85.3,
+    "ok": true,
+    "client_qq_delivery_tested": false,
+    "segment_type": "image"
+  },
+  "positive_control": {
+    "matches": true,
+    "problems": [],
+    "seconds": 12.8,
+    "control": "human checked: one red cup, no people; no table position requirement"
+  },
+  "first_negative_review_has_reasoning_error": true,
+  "all_outputs_retained": true,
+  "strict_layout_generation_stable": false,
+  "visual_reviewer_infallible": false,
+  "source_promoted": true,
+  "chat_data_backed_up": true,
+  "real_qq_new_generation_receipt_verified": false,
+  "full_goal_complete": false,
+  "running_pid": 4348,
+  "onebot_established": true,
+  "generated_image_qq_send": {
+    "status": "ok",
+    "retcode": 0,
+    "image_bytes": 762096,
+    "client_receipt_user_confirmed": false
+  },
+  "binary_zip_sha256": "bbf0b492ffd8755a4e85a84333e16a7094ad1c3e1961293753c28e2eb6b5742b"
+}

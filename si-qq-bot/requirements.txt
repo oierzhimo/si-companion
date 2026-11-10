@@ -1,0 +1,4 @@
+# OneBot v11 WebSocket client; PySide6 is reused from the existing desktop-pet environment.
+websockets==15.0.1
+pypdf==6.21.4
+Pillow>=10.0

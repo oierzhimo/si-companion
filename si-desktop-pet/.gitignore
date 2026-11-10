@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+release/
+data/
+__pycache__/
+*.pyc
+qa/tmp/
+qa/*settings.json

@@ -1,0 +1,8 @@
+{
+  "src/si_pet/__init__.py": "ddc3af3bddfc5aca0d8da3166d0f73dd5de1dc35457b4f6b6a4e36586598964d",
+  "src/si_pet/controller.py": "e315f3ea0d29ff060baed8b81a43d488d4a3e6fe2307016fb74f77a704bd2739",
+  "src/si_pet/genai_status_widget.py": "58a92663ce192f4a8e595243f84c33353deb8612edcb98e607cb07f21d343366",
+  "src/si_pet/pet_window.py": "775b5e75b0ff223dbf76c80188ce68d80b6fe11147e9c1473916babac4564e9e",
+  "tests/test_visibility_motion.py": null,
+  "tools/check_visibility_pause_native.py": null
+}

@@ -1,0 +1,60 @@
+{
+  "idle": {
+    "files": [
+      "hd/idle/00.png",
+      "hd/idle/01.png",
+      "hd/idle/02.png",
+      "hd/idle/03.png",
+      "hd/idle/04.png",
+      "hd/idle/05.png"
+    ],
+    "durations": [
+      280,
+      110,
+      110,
+      140,
+      140,
+      320
+    ],
+    "master_size": [
+      1536,
+      1664
+    ]
+  },
+  "waving": {
+    "files": [
+      "hd/waving/00.png",
+      "hd/waving/01.png",
+      "hd/waving/02.png",
+      "hd/waving/03.png"
+    ],
+    "durations": [
+      140,
+      140,
+      140,
+      280
+    ],
+    "master_size": [
+      1536,
+      1664
+    ]
+  },
+  "sitting": {
+    "files": [
+      "hd/sitting/00.png",
+      "hd/sitting/01.png",
+      "hd/sitting/02.png",
+      "hd/sitting/03.png"
+    ],
+    "durations": [
+      420,
+      140,
+      220,
+      500
+    ],
+    "master_size": [
+      1536,
+      1664
+    ]
+  }
+}

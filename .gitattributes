@@ -1,0 +1,2 @@
+# Preserve the exact bytes used by the a10 overlay's baseline SHA-256 checks.
+* -text
