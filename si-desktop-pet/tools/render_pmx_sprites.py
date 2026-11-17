@@ -89,6 +89,15 @@ uniform vec3 uCamDir; // Normalized direction toward camera (-Z after yaw)
 
 out vec4 fragColor;
 
+vec3 aces_tonemap(vec3 x) {
+    float a = 2.51;
+    float b = 0.03;
+    float c = 2.43;
+    float d = 0.59;
+    float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
 void main() {
     vec4 texel = texture(uTex, vUV);
     float alpha = texel.a * uDiffuse.a;
@@ -99,51 +108,57 @@ void main() {
         if (alpha <= 0.03 || alpha >= 0.85) discard;
     }
 
-    vec3 raw = texel.rgb * uDiffuse.rgb;
-    // Gentle PBR-albedo-to-anime lift so skin, white dress folds & eyes render bright without clipping darks
-    vec3 base = pow(max(raw, vec3(0.0)), vec3(0.84));
+    // Decode sRGB albedo into Linear space so darks stay deep & colors stay rich
+    vec3 albedo = pow(max(texel.rgb * uDiffuse.rgb, vec3(0.0001)), vec3(2.2));
     vec3 N = normalize(vNormal);
     if (!gl_FrontFacing) N = -N;
 
-    // Bright studio key light from front-top-left + airy ambient fill
-    vec3 L = normalize(vec3(-0.28, 0.48, -0.83));
+    // Studio Endfield 3-point lighting: front-top-left key + cool sky fill + subtle jade-white rim
+    vec3 L = normalize(vec3(-0.34, 0.54, -0.77));
+    vec3 V = normalize(uCamDir);
+    vec3 H = normalize(L + V);
     float ndl = dot(N, L);
-    float viewDot = clamp(dot(N, normalize(uCamDir)), 0.0, 1.0);
-    float rim = pow(1.0 - viewDot, 3.0);
+    float ndh = clamp(dot(N, H), 0.0, 1.0);
+    float viewDot = clamp(dot(N, V), 0.0, 1.0);
+    float rim = pow(1.0 - viewDot, 3.5);
 
-    vec3 lit;
+    vec3 linear_lit;
     if (uMatKind == 0) {
-        // Face, iris, highlights, eyelashes: luminous fair anime finish
-        float soft = smoothstep(-0.75, 0.15, ndl);
-        vec3 shadowTint = mix(vec3(0.97, 0.94, 0.96), vec3(1.05, 1.03, 1.02), soft);
-        lit = base * 1.16 * shadowTint;
+        // Face, iris, eyelashes: clean anime ramp preserving warm ivory skin & rich shadow under bangs/chin
+        float ramp = smoothstep(-0.35, 0.25, ndl);
+        vec3 lightEnv = mix(vec3(0.86, 0.82, 0.88), vec3(1.42, 1.38, 1.35), ramp);
+        linear_lit = albedo * lightEnv;
     } else if (uMatKind == 1) {
-        // Skin: bright fair ivory-peach with delicate warm shadow
-        float cel = smoothstep(-0.30, 0.25, ndl);
-        vec3 shade = mix(vec3(0.92, 0.86, 0.89), vec3(1.06, 1.03, 1.02), cel);
-        lit = base * 1.18 * shade + vec3(0.03, 0.025, 0.025) * rim * cel;
+        // Skin (neck/arms/legs): subtle natural occlusion under skirt hem & chin, warm studio key
+        float underSkirt = smoothstep(10.0, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.2, vWorldPos.y));
+        float ao = mix(1.0, 0.78, underSkirt * 0.75);
+        float cel = smoothstep(-0.18, 0.28, ndl);
+        vec3 lightEnv = mix(vec3(0.60, 0.55, 0.65), vec3(1.46, 1.39, 1.35), cel) * ao;
+        linear_lit = albedo * lightEnv + vec3(0.05, 0.04, 0.04) * rim * cel;
     } else if (uMatKind == 3) {
-        // Hair: airy pastel mint-jade + crisp sheen
-        float cel = smoothstep(-0.25, 0.20, ndl);
-        float hi = smoothstep(0.68, 0.90, ndl) * 0.09;
-        vec3 shade = mix(vec3(0.86, 0.91, 0.90), vec3(1.06, 1.06, 1.04), cel);
-        lit = base * 1.16 * shade + vec3(0.10, 0.16, 0.13) * hi + vec3(0.10, 0.18, 0.15) * rim;
+        // Hair: authentic saturated sage-mint with crisp anime angel-ring specular
+        float cel = smoothstep(-0.15, 0.24, ndl);
+        float spec = pow(ndh, 28.0) * 0.15 * cel;
+        vec3 lightEnv = mix(vec3(0.48, 0.59, 0.58), vec3(1.38, 1.40, 1.36), cel);
+        linear_lit = albedo * lightEnv + vec3(0.32, 0.44, 0.36) * spec + vec3(0.10, 0.16, 0.13) * rim;
     } else if (uMatKind == 4) {
-        // Dragon tail & jade ring: bright translucent jade & gold
-        float cel = smoothstep(-0.28, 0.20, ndl);
-        vec3 shade = mix(vec3(0.88, 0.95, 0.94), vec3(1.08, 1.09, 1.07), cel);
-        lit = base * 1.20 * shade + vec3(0.14, 0.26, 0.22) * rim;
+        // Dragon tail & jade orb: sculpted contrast + emerald sheen
+        float cel = smoothstep(-0.15, 0.24, ndl);
+        float spec = pow(ndh, 24.0) * 0.16 * cel;
+        vec3 lightEnv = mix(vec3(0.50, 0.62, 0.62), vec3(1.44, 1.46, 1.42), cel);
+        linear_lit = albedo * lightEnv + vec3(0.25, 0.45, 0.38) * spec + vec3(0.12, 0.24, 0.20) * rim;
     } else {
-        // Outfit / armor / ribbons / sheer socks: crisp studio white & blue contrast
-        float cel = smoothstep(-0.25, 0.22, ndl);
-        vec3 shade = mix(vec3(0.86, 0.89, 0.94), vec3(1.07, 1.07, 1.06), cel);
-        lit = base * 1.18 * shade + vec3(0.09, 0.12, 0.11) * rim;
+        // Dress, wide sleeves, armor, socks: crisp dark boots/trim, cool shadowed folds, clean highlights
+        float cel = smoothstep(-0.14, 0.24, ndl);
+        float spec = pow(ndh, 32.0) * 0.11 * cel;
+        vec3 lightEnv = mix(vec3(0.46, 0.52, 0.64), vec3(1.44, 1.45, 1.46), cel);
+        linear_lit = albedo * lightEnv + vec3(0.28, 0.32, 0.35) * spec + vec3(0.08, 0.11, 0.11) * rim;
     }
 
-    // Soft highlight shoulder compression + gentle vibrance boost
-    lit = lit / (1.0 + max(lit - vec3(0.86), vec3(0.0)) * 0.65);
-    vec3 saturated = mix(vec3(dot(lit, vec3(0.299, 0.587, 0.114))), lit, 1.06);
-    fragColor = vec4(clamp(saturated, 0.0, 1.0), alpha);
+    vec3 mapped = aces_tonemap(linear_lit);
+    // Keep dark boots/trim rich charcoal-black without lifting shadow toe
+    vec3 srgb = pow(mapped, vec3(1.0 / 2.12));
+    fragColor = vec4(clamp(srgb, 0.0, 1.0), alpha);
 }
 """
 
@@ -597,30 +612,43 @@ class GLPMXRenderer:
         self.norm_vbo.bind()
         self.norm_vbo.write(0, flat_n, len(flat_n))
 
-        # Build orthographic+yaw MVP mapping model coords to NDC:
-        #   PMX +X -> NDC +X (screen right), +Y -> NDC +Y (screen up), +Z -> NDC +Z (away from cam)
-        # Keep bottom (y=0) aligned to ``bottom_px`` from top of canvas.
-        half_h = y_view_range * 0.5
-        half_w = half_h * (self.width / self.height)
+        # Build realistic 3D portrait perspective MVP (FOV=24°) so torso/legs/sleeves have natural depth:
+        #   Camera sits at z = -cam_dist looking toward +Z, centered around target_y.
+        #   Choose target_y and cam_dist so y=[0 .. y_view_range] maps cleanly to [bottom_ndc .. bottom_ndc+2.0] at z=0.
+        fov_rad = math.radians(24.0)
+        aspect = self.width / self.height
+        f = 1.0 / math.tan(fov_rad * 0.5)
+        half_h_at_z0 = y_view_range * 0.5
+        cam_dist = half_h_at_z0 * f
         bottom_ndc = 1.0 - 2.0 * (bottom_px / self.height)
-        sy = 2.0 / y_view_range
-        sx = 1.0 / half_w
-        sz = 1.0 / 26.0
+        # At z=0, ndc_y should equal (y - target_y) / half_h_at_z0 -> y=0 maps to bottom_ndc => -target_y/half_h_at_z0 = bottom_ndc
+        target_y = -bottom_ndc * half_h_at_z0
 
-        # Pivot yaw/pitch around character center (0, 9.5, 0)
         R_cam = rot_xyz(pitch_deg, yaw_deg, 0.0)
         M_pivot = np.eye(4, dtype=np.float32)
         M_pivot[:3, :3] = R_cam
         pivot = np.array([0.0, 9.5, 0.0], dtype=np.float32)
         M_pivot[:3, 3] = pivot - R_cam @ pivot
 
-        P = np.array([
-            [sx, 0.0, 0.0, 0.0],
-            [0.0, sy, 0.0, bottom_ndc],
-            [0.0, 0.0, sz, 0.0],
+        # View matrix: translate world by (0, -target_y, +cam_dist) so camera is at origin looking along +Z (z_cam > 0)
+        V = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, -target_y],
+            [0.0, 0.0, 1.0, cam_dist],
             [0.0, 0.0, 0.0, 1.0],
         ], dtype=np.float32)
-        mvp = P @ M_pivot
+
+        # Perspective projection for +Z forward: x_ndc = (f/aspect)*x/z, y_ndc = f*y/z, z_ndc = (near+far)/(far-near) + (-2*near*far)/(far-near)/z
+        z_near, z_far = 15.0, 110.0
+        a_z = (z_far + z_near) / (z_far - z_near)
+        b_z = -(2.0 * z_far * z_near) / (z_far - z_near)
+        P = np.array([
+            [f / aspect, 0.0, 0.0, 0.0],
+            [0.0, f, 0.0, 0.0],
+            [0.0, 0.0, a_z, b_z],
+            [0.0, 0.0, 1.0, 0.0],
+        ], dtype=np.float32)
+        mvp = P @ V @ M_pivot
         from PySide6.QtGui import QMatrix4x4, QVector3D, QVector4D
         qm = QMatrix4x4(*mvp.flatten().tolist())
 
@@ -695,55 +723,51 @@ class GLPMXRenderer:
 # ---- Natural Idle & Chain Draping Helpers ----
 
 def base_drape() -> Dict[str, Tuple[float, float, float]]:
-    """Default natural gravity drape for long sleeve capes, ribbons, hair & jade tail."""
+    """Default natural Endfield stance matching authentic in-game silhouette."""
     rots: Dict[str, Tuple[float, float, float]] = {}
-    # Arms down from A-pose (-35° rest) to relaxed sides (-70° total, clear of thighs)
-    rots['左肩'] = (0.0, 0.0, -4.0)
-    rots['右肩'] = (0.0, 0.0, 4.0)
-    rots['左腕'] = (3.0, 0.0, -34.0)
-    rots['右腕'] = (3.0, 0.0, 34.0)
-    rots['左ひじ'] = (10.0, 0.0, -6.0)
-    rots['右ひじ'] = (10.0, 0.0, 6.0)
+    # Gentle relaxed A-stance matching game idle (-35° rest -> ~ -60° natural arm hang)
+    rots['左肩'] = (0.0, 0.0, -3.0)
+    rots['右肩'] = (0.0, 0.0, 3.0)
+    rots['左腕'] = (4.0, 0.0, -25.0)
+    rots['右腕'] = (4.0, 0.0, 25.0)
+    rots['左ひじ'] = (14.0, 0.0, -6.0)
+    rots['右ひじ'] = (14.0, 0.0, 6.0)
     rots['左手首'] = (0.0, 0.0, 6.0)
     rots['右手首'] = (0.0, 0.0, -6.0)
 
-    # Counter-rotate wide cape sleeves so they bell outward gently rather than clipping through legs
-    rots['L_sleeveD_01_jnt_1'] = (6.0, 0.0, 26.0)
-    rots['L_sleeveD_01_jnt_2'] = (0.0, 0.0, 8.0)
-    rots['L_sleeveD_01_jnt_3'] = (0.0, 0.0, 4.0)
-    rots['R_sleeveD_01_jnt_1'] = (6.0, 0.0, -26.0)
-    rots['R_sleeveD_01_jnt_2'] = (0.0, 0.0, -8.0)
-    rots['R_sleeveD_01_jnt_3'] = (0.0, 0.0, -4.0)
+    # Graceful A-frame drape for wide cape sleeves (hugging leg line gently, not stiffly flared)
+    rots['L_sleeveD_01_jnt_1'] = (4.0, 0.0, 14.0)
+    rots['L_sleeveD_01_jnt_2'] = (0.0, 0.0, 4.0)
+    rots['R_sleeveD_01_jnt_1'] = (4.0, 0.0, -14.0)
+    rots['R_sleeveD_01_jnt_2'] = (0.0, 0.0, -4.0)
 
-    # Gravity-drape yellow & cyan sleeve ribbons cleanly OUTSIDE left leg (no thigh intersection!)
-    rots['ribbonB_01_jnt_1'] = (4.0, 0.0, -8.0)
-    rots['ribbonB_01_jnt_2'] = (2.0, 0.0, -6.0)
+    # Yellow shoulder ribbon & sword-tassel drape smoothly along outer sleeve edge (matching authentic photo)
+    rots['ribbonB_01_jnt_1'] = (2.0, -6.0, -12.0)
+    rots['ribbonB_01_jnt_2'] = (0.0, 0.0, -6.0)
     rots['ribbonB_01_jnt_3'] = (0.0, 0.0, -4.0)
-    rots['ribbonB_01_jnt_6'] = (0.0, 0.0, 12.0)
-    rots['ribbonB_01_jnt_10'] = (0.0, 0.0, 8.0)
+    rots['ribbonB_01_jnt_6'] = (0.0, 0.0, 6.0)
     for k in range(1, 5):
-        rots[f'ribbonF_01_jnt_{k}'] = (0.0, 0.0, -4.0)
+        rots[f'ribbonF_01_jnt_{k}'] = (0.0, -4.0, -3.5)
 
     # Right arm back ribbon (ribbonC): tuck gently downward
-    rots['ribbonC_01_jnt_1'] = (-4.0, 0.0, -22.0)
-    rots['ribbonC_01_jnt_2'] = (-4.0, 0.0, -10.0)
-    rots['ribbonC_01_jnt_3'] = (0.0, 0.0, -6.0)
+    rots['ribbonC_01_jnt_1'] = (-4.0, 0.0, -14.0)
+    rots['ribbonC_01_jnt_2'] = (-2.0, 0.0, -8.0)
 
-    # Back twin long hair drape gently closer toward silhouette
-    rots['L_hairE_jnt1'] = (-10.0, 0.0, -8.0)
-    rots['R_hairE_jnt1'] = (-10.0, 0.0, 8.0)
+    # Back twin long hair drape smoothly
+    rots['L_hairE_jnt1'] = (-8.0, 0.0, -6.0)
+    rots['R_hairE_jnt1'] = (-8.0, 0.0, 6.0)
     rots['L_hairE_jnt6'] = (-4.0, 0.0, 4.0)
     rots['R_hairE_jnt6'] = (-4.0, 0.0, -4.0)
 
-    # Curve jade dragon tail gently out to screen right (+X) behind ankle so it's visible!
-    rots['tail_jnt2'] = (8.0, -8.0, 0.0)
-    rots['tail_jnt4'] = (8.0, -12.0, 0.0)
-    rots['tail_jnt6'] = (6.0, -14.0, 0.0)
-    rots['tail_jnt8'] = (4.0, -12.0, 0.0)
-    rots['tail_jnt10'] = (0.0, -8.0, 0.0)
-    rots['tail_jnt12'] = (-4.0, -6.0, 0.0)
-    rots['tail_jnt14'] = (-6.0, 6.0, 0.0)
-    rots['tail_jnt16'] = (-6.0, 10.0, 0.0)
+    # Curve jade dragon tail gently behind her left ankle (+X, screen right) matching in-game stance!
+    rots['tail_jnt2'] = (6.0, 10.0, 0.0)
+    rots['tail_jnt4'] = (6.0, 14.0, 0.0)
+    rots['tail_jnt6'] = (4.0, 14.0, 0.0)
+    rots['tail_jnt8'] = (2.0, 10.0, 0.0)
+    rots['tail_jnt10'] = (0.0, 6.0, 0.0)
+    rots['tail_jnt12'] = (-2.0, -4.0, 0.0)
+    rots['tail_jnt14'] = (-4.0, -8.0, 0.0)
+    rots['tail_jnt16'] = (-4.0, -8.0, 0.0)
     return rots
 
 
@@ -766,8 +790,8 @@ def build_state_specs() -> Dict[str, List[dict]]:
         tail_sway = math.sin(ph) * 4.0
         r = merge_rots(base, {
             '上半身': (math.sin(ph) * 0.8, 0.0, 0.0),
-            '頭': (1.0 + math.sin(ph) * 0.7, -2.0, -1.2),
-            'tail_jnt8': (4.0, -12.0 + tail_sway, 0.0),
+            '頭': (-2.5 + math.sin(ph) * 0.6, -1.5, -0.8),
+            'tail_jnt8': (2.0, 10.0 + tail_sway, 0.0),
         })
         # Neutral clean anime mouth (no 口内 gap dots)
         m = {}
@@ -950,6 +974,12 @@ def build_state_specs() -> Dict[str, List[dict]]:
             '右腕': (32.0 * p + 3.0, -22.0 * p, 32.0),
             '右ひじ': (86.0 * p + 10.0, 0.0, 46.0 * p),
             '右手首': (0.0, 10.0 * p, 14.0 * p),
+            '右人指１': (0.0, 0.0, 15.0 * p),
+            '右中指１': (0.0, 0.0, 28.0 * p),
+            '右中指２': (0.0, 0.0, 30.0 * p),
+            '右薬指１': (0.0, 0.0, 35.0 * p),
+            '右薬指２': (0.0, 0.0, 32.0 * p),
+            '右小指１': (0.0, 0.0, 38.0 * p),
             'R_sleeveD_01_jnt_1': (-12.0 * p + 6.0, 0.0, -28.0),
             '左腕': (8.0, 4.0, -35.0),
             '左ひじ': (20.0, 0.0, -10.0),
