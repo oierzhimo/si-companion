@@ -24,6 +24,7 @@ class Controller(QObject):
         self.docked=False;self.quiet_dock=False
         self.last_speech=0;self.speech_enabled=True;self.hidden=False
         self.presentation_suppressed=False
+        self._paused_for_visibility=False
         self.next_check_in=time.monotonic()+random.uniform(1200,2400)
         self.walk_distance=0;self.idle_next=time.monotonic()+random.uniform(3,7)
         self.idle_clip=None;self.idle_until=0;self.idle_last=None
@@ -261,6 +262,19 @@ class Controller(QObject):
             self.next_check_in=now+random.uniform(1200,2400)
             if not (self.focus_end or self.store['quiet_mode'] or self.hidden):
                 self.say(self.companion.choose('check_in'))
+        # Keep focus/journal clocks alive while the pet is not visible, but
+        # do not let it wander or accumulate a throw behind a fullscreen app.
+        if self.hidden or self.presentation_suppressed:
+            if not self._paused_for_visibility:
+                b.vx=b.vy=0
+            self._paused_for_visibility=True
+            self._save_progress(now)
+            return
+        if self._paused_for_visibility:
+            self._paused_for_visibility=False
+            if not self.store['manual']:
+                if self.action=='walk':self.action='idle'
+                self.decision_at=max(self.decision_at,now+3)
         velocity=None
         if b.dragging:
             self.set_state('jumping');return
@@ -308,6 +322,10 @@ class Controller(QObject):
         if impact>900:self.say('落地。下次先打个招呼？')
         # Recover after display removal or an externally moved window leaving virtual desktop.
         if not any(s.geometry().adjusted(-220,-800,220,400).contains(round(b.x),round(b.y)) for s in self.scenes):self.clamp_recovery()
+        self._save_progress(now)
+
+    def _save_progress(self,now):
+        b=self.physics.body
         if now-self.last_save>15:
             self.store['total_seconds']+=now-self.last_save
             self.store['last_x']=b.x;self.store['last_y']=b.y

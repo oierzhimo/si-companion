@@ -112,6 +112,24 @@ public final class SiApp extends Application {
         quiet=value;getSharedPreferences("local",0).edit().putBoolean("quiet",value).apply();
         changed(value?"嗯，我就在边上。你专心。":"我在这里，管理员。");
     }
+    public void recordChatTurn(String userText,boolean withImageBadge,boolean withVoiceBadge) {
+        String trimmed=userText==null?"":userText.trim();
+        if(trimmed.isEmpty() && !withImageBadge && !withVoiceBadge) { changed("先输入想说的话，或附上图片/语音标记。");return; }
+        if(trimmed.isEmpty()) trimmed=withImageBadge?"（手机端发送了图片）":"（手机端发送了语音）";
+        if(trimmed.length()>2000) { changed("每次最多输入 2000 字。");return; }
+        final String finalUser=trimmed;
+        worker.execute(()->{
+            try {
+                JSONArray attachments=new JSONArray();
+                if(withImageBadge) attachments.put(new JSONObject().put("kind","image").put("name","android-image.jpg").put("data_url",""));
+                if(withVoiceBadge) attachments.put(new JSONObject().put("kind","voice").put("name","android-voice.wav").put("data_url",""));
+                String reply=line("create");
+                if(reply==null || reply.isEmpty()) reply="收到啦，等你回到电脑前我们继续聊。";
+                ledger.addChatTurn(finalUser,reply,attachments);
+                changed(reply);
+            } catch(Exception error) { changed("这次对话还没保存好："+error.getMessage()); }
+        });
+    }
     public void pair(String invitation) {
         if(invitation.trim().isEmpty()) { changed("先粘贴电脑端的配对邀请。");return; }
         if(!networkBusy.compareAndSet(false,true)) { changed("正在处理上一项连接，请稍候。");return; }

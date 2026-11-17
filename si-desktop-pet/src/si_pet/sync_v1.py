@@ -21,9 +21,10 @@ PROTOCOL = 1
 MAX_BUNDLE_BYTES = 5_000_000
 MAX_EVENTS = 10_000
 DEVICE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
-EVENT_KINDS = {"pat", "snack", "focus_completed", "journal", "legacy_snapshot", "pref_set"}
+EVENT_KINDS = {"pat", "snack", "focus_completed", "journal", "legacy_snapshot", "pref_set", "chat_turn"}
 COUNTERS = ("pats", "snacks", "focus_sessions", "affinity")
 SHARED_PREFERENCE_KEYS = ("preferred_name", "greeting_style")
+CHAT_ATTACHMENT_KINDS = ("image", "voice", "file")
 # Harmony/JS clients read sequence and Lamport numbers as Numbers; values
 # beyond this integer lose precision there even though Python accepts them.
 JS_MAX_SAFE_INTEGER = 2**53 - 1
@@ -99,6 +100,18 @@ def validate_event(event):
             raise SyncError("Unsupported shared preference")
         if not isinstance(payload["value"], str) or len(payload["value"]) > 80:
             raise SyncError("Invalid shared preference value")
+    if kind == "chat_turn":
+        if (set(payload) != {"user", "assistant", "attachments"}
+                or not isinstance(payload["user"], str) or not 1 <= len(payload["user"]) <= 2000
+                or not isinstance(payload["assistant"], str) or not 1 <= len(payload["assistant"]) <= 4000
+                or not isinstance(payload["attachments"], list) or len(payload["attachments"]) > 4):
+            raise SyncError("Invalid chat turn payload")
+        for item in payload["attachments"]:
+            if (not isinstance(item, dict) or set(item) != {"kind", "name", "data_url"}
+                    or not isinstance(item["kind"], str) or item["kind"] not in CHAT_ATTACHMENT_KINDS
+                    or not isinstance(item["name"], str) or not 1 <= len(item["name"]) <= 100
+                    or not isinstance(item["data_url"], str) or len(item["data_url"]) > 20000):
+                raise SyncError("Invalid chat attachment")
     try:
         if len(canonical(event)) > 32_000:
             raise SyncError("Event too large")
@@ -412,3 +425,41 @@ class Ledger:
                         'at':instant.astimezone().strftime('%m-%d %H:%M'),
                         'text':event['payload']['text']}))
             return [entry for _,entry in sorted(rows,key=lambda pair:pair[0])][-100:]
+
+    def add_chat_turn(self, user, assistant, attachments=(), *, occurred_at=None):
+        """Append a synced multimodal chat turn event."""
+        with self._lock:
+            normalized = []
+            for item in (attachments or ()):
+                if not isinstance(item, Mapping):
+                    raise SyncError("Invalid chat attachment")
+                normalized.append({
+                    "kind": item.get("kind"),
+                    "name": item.get("name"),
+                    "data_url": item.get("data_url", ""),
+                })
+            return self.add(
+                "chat_turn",
+                {"user": user, "assistant": assistant, "attachments": normalized},
+                occurred_at=occurred_at,
+            )
+
+    def chat_turns(self, limit=12):
+        """Deterministic causal projection of synced multimodal chat turns."""
+        with self._lock:
+            rows = []
+            for event in self.events.values():
+                if event["kind"] != "chat_turn":
+                    continue
+                payload = event["payload"]
+                order = (event["lamport"], event["device_id"], event["event_id"])
+                rows.append((order, {
+                    "event_id": event["event_id"],
+                    "device_id": event["device_id"],
+                    "occurred_at": event["occurred_at"],
+                    "user": payload["user"],
+                    "assistant": payload["assistant"],
+                    "attachments": copy.deepcopy(payload["attachments"]),
+                }))
+            ordered = [entry for _, entry in sorted(rows, key=lambda pair: pair[0])]
+            return ordered[-limit:] if limit and limit > 0 else ordered

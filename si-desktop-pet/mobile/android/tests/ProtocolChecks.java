@@ -118,6 +118,14 @@ public final class ProtocolChecks {
         Files.write(new File(directory,"android-export.json").toPath(),ledger.exportBundle());
         check(new EventLedger(new File(directory,"android-ledger.json")).summary().getLong("affinity")==11,"Reload lost events");
         sharedPreferencesChecks(directory);
+        EventLedger chatLedger=new EventLedger(new File(directory,"chat-turns-ledger.json"));
+        JSONArray atts=new JSONArray().put(new JSONObject().put("kind","image").put("name","draft.jpg").put("data_url",""));
+        chatLedger.addChatTurn("在手机上发一张速写","收到啦，线条很干净。",atts);
+        JSONArray turns=chatLedger.chatTurns();
+        check(turns.length()==1,"Expected 1 synced chat turn");
+        check(turns.getJSONObject(0).getString("user").equals("在手机上发一张速写"),"Chat turn user mismatch");
+        check(turns.getJSONObject(0).getJSONArray("attachments").getJSONObject(0).getString("name").equals("draft.jpg"),"Chat turn attachment mismatch");
+        Files.write(new File(directory,"android-chat-export.json").toPath(),chatLedger.exportBundle());
         System.out.println("Cross-language fixture, Unicode canonical JSON, duplicate/tamper rejection and persistence passed.");
     }
 }

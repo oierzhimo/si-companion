@@ -121,6 +121,39 @@ def prepare_image_attachment(image_bytes: bytes) -> str:
         raise ChatError('图片无法读取') from None
 
 
+def prepare_image_thumbnail(image_bytes: bytes, max_side: int = 160) -> str:
+    """Create a compact JPEG data URL thumbnail (<= 20,000 chars) for cross-device sync."""
+    if not isinstance(image_bytes, bytes) or not 0 < len(image_bytes) <= MAX_IMAGE_BYTES:
+        raise ChatError('图片为空或超出大小限制')
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(image_bytes)) as im:
+                if im.format not in _SUPPORTED_FORMATS or im.width <= 0 or im.height <= 0:
+                    raise ChatError('图片格式或尺寸不支持')
+                try:
+                    im.seek(0)
+                except EOFError:
+                    pass
+                im = ImageOps.exif_transpose(im)
+                im.thumbnail((max(32, int(max_side)), max(32, int(max_side))))
+                if 'A' in im.getbands() or 'transparency' in im.info:
+                    rgba = im.convert('RGBA')
+                    bg = Image.new('RGB', rgba.size, 'white')
+                    bg.paste(rgba, mask=rgba.getchannel('A'))
+                    im = bg
+                else:
+                    im = im.convert('RGB')
+                out = io.BytesIO()
+                im.save(out, format='JPEG', quality=65, optimize=True)
+                url = 'data:image/jpeg;base64,' + base64.b64encode(out.getvalue()).decode('ascii')
+                return url if len(url) <= 20000 else ''
+    except ChatError:
+        raise
+    except Exception:
+        raise ChatError('图片无法读取') from None
+
+
 def attach_images(messages: list, image_data_urls: list) -> list:
     """Return a copy of *messages* with images appended to the last user turn.
 
@@ -389,10 +422,13 @@ class ChatSession:
                 raise ValueError('turns invalid')
             for turn in turns:
                 if (not isinstance(turn, dict)
-                        or set(turn) != {'user', 'assistant'}
-                        or any(not isinstance(v, str) or not v or len(v) > 12000
-                               for v in turn.values())):
+                        or not {'user', 'assistant'}.issubset(turn)
+                        or not set(turn).issubset({'user', 'assistant', 'attachments', 'event_id', 'device_id', 'occurred_at'})
+                        or not isinstance(turn['user'], str) or not turn['user'] or len(turn['user']) > 12000
+                        or not isinstance(turn['assistant'], str) or not turn['assistant'] or len(turn['assistant']) > 12000):
                     raise ValueError('turn structure invalid')
+                if 'attachments' in turn and not isinstance(turn['attachments'], list):
+                    raise ValueError('turn attachments invalid')
             profile = data.get('profile', '')
             model = data.get('model', '')
             provider = data.get('provider', 'local')
@@ -470,7 +506,16 @@ class ChatSession:
         if self.profile:
             msgs.append({'role': 'user', 'content': '管理员自述偏好（资料）：' + self.profile})
         for turn in self.turns:
-            msgs.append({'role': 'user', 'content': turn['user']})
+            user_content = turn['user']
+            atts = turn.get('attachments')
+            if isinstance(atts, list) and atts:
+                badges = ' '.join(
+                    f"[{a.get('kind', 'file')}:{a.get('name', '附件')}]"
+                    for a in atts if isinstance(a, dict)
+                )
+                if badges:
+                    user_content = f'{user_content} {badges}'
+            msgs.append({'role': 'user', 'content': user_content})
             msgs.append({'role': 'assistant', 'content': turn['assistant']})
         msgs.append({'role': 'user', 'content': text.strip()})
         if image_data_urls:
@@ -480,24 +525,97 @@ class ChatSession:
                 raise
         return msgs
 
-    def commit(self, text: str, reply: str) -> None:
+    def commit(
+        self,
+        text: str,
+        reply: str,
+        attachments: list = (),
+        event_id: str = '',
+    ) -> dict:
         """Append a completed turn and persist the session.
 
         Keeps only the most recent ``_MAX_TURNS`` (12) turns.  If
         :meth:`save` raises, the in-memory state is rolled back so it stays
         consistent with what is on disk.
-
-        Args:
-            text: The user's message for this turn (will be ``.strip()``-ped).
-            reply: The assistant's reply.
-
-        Raises:
-            ChatError: Propagated from :meth:`save` if the file cannot be written.
         """
         previous = self.turns
-        self.turns = (self.turns + [{'user': text.strip(), 'assistant': reply}])[-_MAX_TURNS:]
+        entry: dict = {'user': text.strip(), 'assistant': reply}
+        if attachments:
+            entry['attachments'] = [
+                {
+                    'kind': str(a.get('kind', 'file')),
+                    'name': str(a.get('name', '附件'))[:100],
+                    'data_url': str(a.get('data_url', ''))[:20000],
+                }
+                for a in attachments if isinstance(a, dict)
+            ][:4]
+        if event_id:
+            entry['event_id'] = str(event_id)
+        self.turns = (self.turns + [entry])[-_MAX_TURNS:]
         try:
             self.save()
         except Exception:
             self.turns = previous
             raise
+        return entry
+
+    def sync_with_ledger(self, ledger) -> int:
+        """Merge remote ``chat_turn`` events from *ledger* into this session.
+
+        Returns the number of newly added turns.
+        """
+        if ledger is None or not hasattr(ledger, 'chat_turns'):
+            return 0
+        remote_turns = ledger.chat_turns(limit=_MAX_TURNS)
+        if not remote_turns:
+            return 0
+        seen_ids = {
+            t.get('event_id') for t in self.turns
+            if isinstance(t, dict) and t.get('event_id')
+        }
+        added_entries = []
+        for item in remote_turns:
+            eid = item.get('event_id', '')
+            if eid and eid in seen_ids:
+                continue
+            # Also deduplicate an untagged local turn with identical user/assistant
+            if any(
+                not t.get('event_id')
+                and t.get('user') == item['user']
+                and t.get('assistant') == item['assistant']
+                for t in self.turns
+            ):
+                for t in self.turns:
+                    if (not t.get('event_id')
+                            and t.get('user') == item['user']
+                            and t.get('assistant') == item['assistant']):
+                        t['event_id'] = eid
+                        if item.get('attachments') and not t.get('attachments'):
+                            t['attachments'] = list(item['attachments'])
+                        seen_ids.add(eid)
+                        break
+                continue
+            entry: dict = {
+                'user': item['user'],
+                'assistant': item['assistant'],
+                'event_id': eid,
+            }
+            if item.get('attachments'):
+                entry['attachments'] = list(item['attachments'])
+            if item.get('device_id'):
+                entry['device_id'] = item['device_id']
+            if item.get('occurred_at'):
+                entry['occurred_at'] = item['occurred_at']
+            added_entries.append(entry)
+            if eid:
+                seen_ids.add(eid)
+        if not added_entries:
+            return 0
+        previous = self.turns
+        self.turns = (self.turns + added_entries)[-_MAX_TURNS:]
+        try:
+            self.save()
+        except Exception:
+            self.turns = previous
+            raise
+        return len(added_entries)

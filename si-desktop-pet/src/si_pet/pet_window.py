@@ -72,7 +72,7 @@ class PetWindow(QWidget):
         self.timer.setInterval(round(1000/cfg['fps']))
         self.setWindowOpacity(.62 if self.ctrl.focus_end or cfg['quiet_mode'] else 1.0)
         self.bubble.setWindowOpacity(self.windowOpacity())
-        if self.ctrl.hidden:self.hide();self.bubble.hide()
+        if self.ctrl.hidden:self._cancel_drag();self.hide();self.bubble.hide()
         self.update()
 
     def tick(self):
@@ -85,6 +85,7 @@ class PetWindow(QWidget):
             was_suppressed=self.ctrl.presentation_suppressed
             self.ctrl.presentation_suppressed=suppressed
             if suppressed:
+                self._cancel_drag()
                 self.hide();self.bubble.hide()
             elif was_suppressed and not self.ctrl.hidden:
                 self.show()
@@ -192,7 +193,15 @@ class PetWindow(QWidget):
         if key=='manual' and value:self.activateWindow();self.setFocus()
 
     def recover(self):self.ctrl.recover();self.sync();self.show();self.raise_()
-    def hide_pet(self):self.ctrl.hidden=True;self.hide();self.bubble.hide()
+    def _cancel_drag(self):
+        """A hidden window may never receive the original mouse release."""
+        if self.ctrl.physics.body.dragging:
+            self.ctrl.physics.release(0,0)
+        self._press=None;self._drag=False;self._samples.clear()
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def hide_pet(self):
+        self._cancel_drag();self.ctrl.hidden=True;self.hide();self.bubble.hide()
 
     def keyPressEvent(self,event):
         if self.ctrl.store['manual']:

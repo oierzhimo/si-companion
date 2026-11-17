@@ -325,11 +325,11 @@ class GenAIStatusWidget(QFrame):
         request = QNetworkRequest(QUrl(url))
         request.setAttribute(
             QNetworkRequest.Attribute.RedirectPolicyAttribute,
-            _REDIRECT_POLICY,
+            _REDIRECT_POLICY.value,
         )
         request.setAttribute(
             QNetworkRequest.Attribute.CacheLoadControlAttribute,
-            QNetworkRequest.CacheLoadControl.AlwaysNetwork,
+            QNetworkRequest.CacheLoadControl.AlwaysNetwork.value,
         )
         # Do not send or store cookies, reuse cached HTTP credentials, or
         # persist response bodies.  The check needs no authentication material.
@@ -343,7 +343,7 @@ class GenAIStatusWidget(QFrame):
                 QNetworkRequest.Attribute.CookieSaveControlAttribute,
                 QNetworkRequest.Attribute.AuthenticationReuseAttribute):
             request.setAttribute(control_attribute,
-                                 QNetworkRequest.LoadControl.Manual)
+                                 QNetworkRequest.LoadControl.Manual.value)
         try:
             reply = self._manager.get(request)
         except (AttributeError, RuntimeError, TypeError):

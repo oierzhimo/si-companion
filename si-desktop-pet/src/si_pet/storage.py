@@ -158,6 +158,22 @@ class Store:
         self.save()
         return event
 
+    def record_chat_turn(self, user, assistant, attachments=()):
+        if self.sync_ledger is None:
+            return None
+        return self.sync_ledger.add_chat_turn(user, assistant, attachments)
+
+    def _sync_multimodal_conversation(self):
+        if self.sync_ledger is None or not self.sync_ledger.chat_turns():
+            return 0
+        try:
+            from .chat_backend import ChatSession
+            mm_path = self.path.parent / 'multimodal_conversation.json'
+            session = ChatSession(mm_path)
+            return session.sync_with_ledger(self.sync_ledger)
+        except Exception:
+            return 0
+
     def import_sync_bundle(self, data):
         if self.sync_ledger is None:
             raise SyncError('Sync preview is not enabled')
@@ -168,6 +184,7 @@ class Store:
                 self.values[key]=summary[key]
             self.values['history']=self.sync_ledger.journal_rows()
             self.save()
+            self._sync_multimodal_conversation()
         return added
 
     def __getitem__(self,key): return self.values[key]

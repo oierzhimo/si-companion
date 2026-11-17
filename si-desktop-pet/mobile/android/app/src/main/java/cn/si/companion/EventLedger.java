@@ -88,14 +88,18 @@ public final class EventLedger {
     }
     /** Tuple order used by Python summary(): (lamport, device_id, event_id, value). */
     private static int preferenceOrder(JSONObject left,JSONObject right) throws Exception {
+        int order=causalOrder(left,right);
+        if(order!=0) return order;
+        return codePointOrder(left.getJSONObject("payload").getString("value"),
+                              right.getJSONObject("payload").getString("value"));
+    }
+    /** Deterministic causal order: (lamport, device_id, event_id). */
+    private static int causalOrder(JSONObject left,JSONObject right) throws Exception {
         int order=Long.compare(left.getLong("lamport"),right.getLong("lamport"));
         if(order!=0) return order;
         order=codePointOrder(left.getString("device_id"),right.getString("device_id"));
         if(order!=0) return order;
-        order=codePointOrder(left.getString("event_id"),right.getString("event_id"));
-        if(order!=0) return order;
-        return codePointOrder(left.getJSONObject("payload").getString("value"),
-                              right.getJSONObject("payload").getString("value"));
+        return codePointOrder(left.getString("event_id"),right.getString("event_id"));
     }
 
     public static void validate(JSONObject event) throws Exception {
@@ -128,6 +132,26 @@ public final class EventLedger {
                 String key=payload.getString("key");
                 if(!(key.equals("preferred_name") || key.equals("greeting_style")) || length(payload.getString("value"))>80)
                     fail("Invalid shared preference");break;
+            case "chat_turn":
+                fields(payload,"user","assistant","attachments");
+                if(!(payload.get("user") instanceof String) || !(payload.get("assistant") instanceof String))
+                    fail("Invalid chat turn payload");
+                int uLen=length(payload.getString("user")),aLen=length(payload.getString("assistant"));
+                if(uLen<1 || uLen>2000 || aLen<1 || aLen>4000) fail("Invalid chat turn payload");
+                JSONArray attachments=payload.getJSONArray("attachments");
+                if(attachments.length()>4) fail("Invalid chat turn payload");
+                for(int i=0;i<attachments.length();i++) {
+                    JSONObject item=attachments.getJSONObject(i);
+                    fields(item,"kind","name","data_url");
+                    if(!(item.get("kind") instanceof String) || !(item.get("name") instanceof String)
+                            || !(item.get("data_url") instanceof String)) fail("Invalid chat attachment");
+                    String kind=item.getString("kind");
+                    if(!(kind.equals("image") || kind.equals("voice") || kind.equals("file")))
+                        fail("Invalid chat attachment");
+                    int nLen=length(item.getString("name")),dLen=length(item.getString("data_url"));
+                    if(nLen<1 || nLen>100 || dLen>20000) fail("Invalid chat attachment");
+                }
+                break;
             case "legacy_snapshot":
                 fields(payload,"pats","snacks","focus_sessions","affinity","history");
                 for(String counter:COUNTERS) integer(payload.get(counter));
@@ -253,6 +277,37 @@ public final class EventLedger {
             ordered.get(key).put(event.getString("event_id"),new JSONObject().put("at",at).put("text",event.getJSONObject("payload").getString("text")));
         }
         for(TreeMap<String,JSONObject> instant:ordered.values()) for(JSONObject row:instant.values()) result.put(row);
+        return result;
+    }
+
+    public synchronized void addChatTurn(String user,String assistant,JSONArray attachments) throws Exception {
+        JSONArray normalized=attachments==null?new JSONArray():new JSONArray(JsonCodec.canonical(attachments));
+        JSONObject payload=new JSONObject().put("user",user).put("assistant",assistant).put("attachments",normalized);
+        add("chat_turn",payload);
+    }
+
+    public synchronized JSONArray chatTurns() throws Exception {
+        java.util.ArrayList<JSONObject> rows=new java.util.ArrayList<>();
+        for(JSONObject event:events.values()) {
+            if(event.getString("kind").equals("chat_turn")) rows.add(event);
+        }
+        rows.sort((left,right)->{
+            try { return causalOrder(left,right); }
+            catch(Exception error) { throw new IllegalStateException(error); }
+        });
+        JSONArray result=new JSONArray();
+        int start=Math.max(0,rows.size()-12);
+        for(int i=start;i<rows.size();i++) {
+            JSONObject event=rows.get(i);
+            JSONObject payload=event.getJSONObject("payload");
+            result.put(new JSONObject()
+                .put("event_id",event.getString("event_id"))
+                .put("device_id",event.getString("device_id"))
+                .put("occurred_at",event.getString("occurred_at"))
+                .put("user",payload.getString("user"))
+                .put("assistant",payload.getString("assistant"))
+                .put("attachments",new JSONArray(JsonCodec.canonical(payload.getJSONArray("attachments")))));
+        }
         return result;
     }
 }

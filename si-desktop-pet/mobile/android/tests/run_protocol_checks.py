@@ -33,6 +33,10 @@ expected=canonical({'text':'管理员，墨色🖌️\n</script>\u2028'})
 assert (work/'java-canonical.json').read_bytes()==expected
 assert fixture.import_bundle((work/'android-export.json').read_bytes())==2
 assert fixture.summary()['affinity']==11
+chat_peer=Ledger(work/'python-chat-peer.json','pc-chat-peer')
+assert chat_peer.import_bundle((work/'android-chat-export.json').read_bytes())==1
+assert chat_peer.chat_turns()[0]['user']=='在手机上发一张速写'
+assert chat_peer.chat_turns()[0]['attachments'][0]['name']=='draft.jpg'
 host=Ledger(work/'host-ledger.json','pc-host');host.seed_legacy({})
 host.add('snack')
 registry=PeerRegistry(work/'host',host.device_id,'PC host')

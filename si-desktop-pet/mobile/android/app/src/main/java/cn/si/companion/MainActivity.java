@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
         button(body,"和祀说一句",()->new AlertDialog.Builder(this).setItems(new String[]{"想做点新东西","有点卡住了","想休息一会儿","想听你聊画","先安静陪我"},(d,i)->app.contact(new String[]{"create","stuck","tired","painting","quiet"}[i])).show());
         quiet=new CheckBox(this);quiet.setText("先安静陪我");quiet.setChecked(app.quiet);quiet.setOnCheckedChangeListener((v,value)->{if(value!=app.quiet)app.setQuiet(value);});body.addView(quiet);
         button(body,"查看相伴手记",this::journal);
+        button(body,"多模态续聊 · 跨端会话",this::chatDialog);
         button(body,"开启桌面悬浮",this::startOverlay);
         button(body,"停止桌面悬浮",()->stopService(new Intent(this,PetOverlayService.class)));
         body.addView(text("把相伴记录带过来",22));connection=text("",14);body.addView(connection);
@@ -109,6 +110,34 @@ public final class MainActivity extends Activity {
             for(int i=Math.max(0,rows.length()-35);i<rows.length();i++) { JSONObject row=rows.getJSONObject(i);content.append(row.getString("at")).append('\n').append(row.getString("text")).append("\n\n"); }
             if(content.length()==0)content.append("第一段相伴，从现在开始。");
             new AlertDialog.Builder(this).setTitle("相伴手记").setMessage(content).setPositiveButton("好",null).show();
+        } catch(Exception error) { status.setText(error.getMessage()); }
+    }
+    private void chatDialog() {
+        try {
+            JSONArray rows=app.ledger.chatTurns();StringBuilder content=new StringBuilder();
+            for(int i=0;i<rows.length();i++) {
+                JSONObject row=rows.getJSONObject(i);
+                content.append("管理员：").append(row.getString("user"));
+                JSONArray attachments=row.optJSONArray("attachments");
+                if(attachments!=null && attachments.length()>0) {
+                    content.append(" ");
+                    for(int j=0;j<attachments.length();j++) {
+                        JSONObject att=attachments.getJSONObject(j);
+                        content.append("[").append(att.optString("kind","file")).append(":").append(att.optString("name","附件")).append("]");
+                    }
+                }
+                content.append("\n祀：").append(row.getString("assistant")).append("\n\n");
+            }
+            if(content.length()==0) content.append("暂无跨端对话记录。发送后可通过局域网或记录包同步到电脑端继续聊。\n\n");
+            LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(16),dp(8),dp(16),dp(8));
+            TextView historyView=text(content.toString(),14);panel.addView(historyView);
+            EditText input=new EditText(this);input.setHint("在手机上给祀留言…");panel.addView(input);
+            CheckBox imgCheck=new CheckBox(this);imgCheck.setText("附带图片标记");panel.addView(imgCheck);
+            CheckBox voiceCheck=new CheckBox(this);voiceCheck.setText("附带语音标记");panel.addView(voiceCheck);
+            new AlertDialog.Builder(this).setTitle("多模态续聊 · 跨端会话").setView(panel)
+                .setNegativeButton("关闭",null)
+                .setPositiveButton("发送并记入同步",(d,w)->app.recordChatTurn(input.getText().toString(),imgCheck.isChecked(),voiceCheck.isChecked()))
+                .show();
         } catch(Exception error) { status.setText(error.getMessage()); }
     }
     private void startOverlay() {

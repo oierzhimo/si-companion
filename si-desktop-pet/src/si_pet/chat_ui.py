@@ -226,6 +226,13 @@ class MultimodalDialog(QDialog):
         # Event filter for Ctrl+V image paste
         self.input.installEventFilter(self)
 
+        changed_sig = getattr(self.ctrl, 'changed', None)
+        if changed_sig is not None and hasattr(changed_sig, 'connect'):
+            try:
+                changed_sig.connect(self.sync_from_ledger)
+            except Exception:
+                pass
+        self.sync_from_ledger()
         self.render()
 
     # ---------------------------------------------------------------- properties
@@ -255,15 +262,36 @@ class MultimodalDialog(QDialog):
 
     def render(self):
         """Re-render transcript from session history (plain text only)."""
-        self.transcript.setPlainText(
-            '\n\n'.join(
-                '管理员：' + t['user'] + '\n祀：' + t['assistant']
-                for t in self.session.turns
-            )
-        )
+        blocks = []
+        for t in self.session.turns:
+            user_line = '管理员：' + t['user']
+            atts = t.get('attachments')
+            if isinstance(atts, list) and atts:
+                badges = ' '.join(
+                    f"[{a.get('kind', 'file')}:{a.get('name', '附件')}]"
+                    for a in atts if isinstance(a, dict)
+                )
+                if badges:
+                    user_line += ' ' + badges
+            blocks.append(user_line + '\n祀：' + t['assistant'])
+        self.transcript.setPlainText('\n\n'.join(blocks))
         self.transcript.verticalScrollBar().setValue(
             self.transcript.verticalScrollBar().maximum()
         )
+
+    def sync_from_ledger(self) -> int:
+        """Pull any new cross-device chat_turn events from ctrl.store.sync_ledger."""
+        store = getattr(self.ctrl, 'store', None)
+        ledger = getattr(store, 'sync_ledger', None) if store is not None else None
+        if ledger is None:
+            return 0
+        try:
+            added = self.session.sync_with_ledger(ledger)
+            if added > 0:
+                self.render()
+            return added
+        except Exception:
+            return 0
 
     # -------------------------------------------------------- image attachments
 
@@ -726,8 +754,39 @@ class MultimodalDialog(QDialog):
         if effective_text is None:
             return
 
+        attachments = []
+        for idx, img_bytes in enumerate(self.pending_images[:3], start=1):
+            try:
+                thumb = chat_backend.prepare_image_thumbnail(img_bytes)
+            except Exception:
+                thumb = ''
+            attachments.append({
+                'kind': 'image',
+                'name': f'image-{idx}.jpg',
+                'data_url': thumb,
+            })
+        if voice_bytes:
+            attachments.append({
+                'kind': 'voice',
+                'name': 'reply.wav',
+                'data_url': '',
+            })
+
+        event_id = ''
+        store = getattr(self.ctrl, 'store', None)
+        record_fn = getattr(store, 'record_chat_turn', None) if store is not None else None
+        if callable(record_fn):
+            try:
+                ev = record_fn(effective_text, reply, attachments)
+                if isinstance(ev, dict):
+                    event_id = str(ev.get('event_id', ''))
+            except Exception:
+                pass
+
         try:
-            self.session.commit(effective_text, reply)
+            self.session.commit(
+                effective_text, reply, attachments=attachments, event_id=event_id
+            )
         except (ConversationError, ChatError) as exc:
             self.status.setText(str(exc))
             return
