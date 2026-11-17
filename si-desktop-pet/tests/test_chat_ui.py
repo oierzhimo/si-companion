@@ -99,6 +99,13 @@ class TestMultimodalDialog(unittest.TestCase):
         self.assertIn('管理员：<b>粗体</b>', text)
         self.assertIn('祀：<i>斜体</i>', text)
 
+    def test_voice_profile_id_from_store_and_fallback(self):
+        self.assertEqual(self.dialog._voice_profile_id(), '06332768')
+        self.ctrl.store = {'voice_profile_id': 'custom_profile'}
+        self.assertEqual(self.dialog._voice_profile_id(), 'custom_profile')
+        self.ctrl.store = {'voice_profile_id': '   '}
+        self.assertEqual(self.dialog._voice_profile_id(), '06332768')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -239,6 +239,18 @@ class MultimodalDialog(QDialog):
     def voice_mode(self, enabled: bool):
         self.voice_btn.setChecked(bool(enabled))
 
+    def _voice_profile_id(self) -> str:
+        """Return configured VoiceStudio profile ID from ctrl.store, or default."""
+        store = getattr(self.ctrl, 'store', None)
+        if store is not None:
+            try:
+                val = store['voice_profile_id']
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            except Exception:
+                pass
+        return chat_backend.VOICE_PROFILE_DEFAULT
+
     # ---------------------------------------------------------------- render
 
     def render(self):
@@ -589,6 +601,7 @@ class MultimodalDialog(QDialog):
             return
 
         voice_requested = self.voice_mode
+        voice_profile_id = self._voice_profile_id()
         effective_text = text.strip() if text.strip() else '（图片）'
 
         self.busy = True
@@ -655,7 +668,9 @@ class MultimodalDialog(QDialog):
             voice_bytes = None
             if voice_requested:
                 try:
-                    voice_bytes = chat_backend.synthesize_voice(reply)
+                    voice_bytes = chat_backend.synthesize_voice(
+                        reply, profile_id=voice_profile_id
+                    )
                 except Exception:
                     voice_bytes = None
 

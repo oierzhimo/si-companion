@@ -187,7 +187,10 @@ def _get_profiles(connection: http.client.HTTPConnection) -> list:
     return profiles
 
 
-def check_voice_service(timeout: float = 2.0) -> str:
+def check_voice_service(
+    timeout: float = 2.0,
+    profile_id: str = VOICE_PROFILE_DEFAULT,
+) -> str:
     """Probe the local VoiceStudio and return a status string.
 
     Performs a single ``GET /profiles`` against ``127.0.0.1:3900``.  No
@@ -195,12 +198,14 @@ def check_voice_service(timeout: float = 2.0) -> str:
 
     Args:
         timeout: Socket timeout in seconds.
+        profile_id: VoiceStudio profile ID to check for.
 
     Returns:
-        ``'available'``       — service up and ``VOICE_PROFILE_DEFAULT`` found.
-        ``'profile_missing'`` — service up but default profile absent.
+        ``'available'``       — service up and *profile_id* found.
+        ``'profile_missing'`` — service up but *profile_id* absent.
         ``'unavailable'``     — connection failed or response unreadable.
     """
+    target_profile = (profile_id or VOICE_PROFILE_DEFAULT).strip() or VOICE_PROFILE_DEFAULT
     try:
         connection = http.client.HTTPConnection(VOICE_HOST, VOICE_PORT, timeout=timeout)
         try:
@@ -225,7 +230,7 @@ def check_voice_service(timeout: float = 2.0) -> str:
     if not isinstance(profiles, list):
         return 'unavailable'
     if not any(
-            isinstance(p, dict) and str(p.get('id')) == VOICE_PROFILE_DEFAULT
+            isinstance(p, dict) and str(p.get('id')) == target_profile
             for p in profiles):
         return 'profile_missing'
     return 'available'
