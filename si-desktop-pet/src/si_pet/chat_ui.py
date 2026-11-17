@@ -31,6 +31,8 @@ except ImportError:
 
 _MAX_IMAGES = 4
 _ALLOWED_IMAGE_EXTS = frozenset(('.jpg', '.jpeg', '.png', '.gif', '.webp'))
+DEFAULT_OLLAMA_ENDPOINT = 'http://127.0.0.1:11434/v1'
+DEFAULT_OLLAMA_MODEL = 'si-qwen3.5:9b'
 
 
 class MultimodalDialog(QDialog):
@@ -65,8 +67,9 @@ class MultimodalDialog(QDialog):
         had_saved_config = Path(path).exists()
         self.session = chat_backend.ChatSession(path)
         if not had_saved_config:
-            self.session.provider = 'genai'
-            self.session.endpoint = DEFAULT_GENAI_ENDPOINT
+            self.session.provider = 'local'
+            self.session.endpoint = DEFAULT_OLLAMA_ENDPOINT
+            self.session.model = DEFAULT_OLLAMA_MODEL
 
         self.provider = (
             self.session.provider if self.session.provider in PROVIDERS else 'local'
@@ -432,15 +435,15 @@ class MultimodalDialog(QDialog):
         self.migration_notice = ''
         pending = self.model_busy
         self.invalidate_models()
-        endpoint = DEFAULT_GENAI_ENDPOINT if provider == 'genai' else DEFAULT_LOCAL_ENDPOINT
+        endpoint = DEFAULT_GENAI_ENDPOINT if provider == 'genai' else DEFAULT_OLLAMA_ENDPOINT
         self.endpoint.setText(endpoint)
         self.api_key.setText(GENAI_DEFAULT_API_KEY if provider == 'genai' else '')
         if provider == 'genai':
             self.model.setText(GENAI_DEFAULT_MODEL)
             self.session.model = GENAI_DEFAULT_MODEL
         else:
-            self.model.clear()
-            self.session.model = ''
+            self.model.setText(DEFAULT_OLLAMA_MODEL)
+            self.session.model = DEFAULT_OLLAMA_MODEL
         self.session.endpoint = endpoint
         if pending:
             self.status.setText('已切换服务，迟到的模型列表不会更新窗口。需要时请重新获取模型。')
@@ -451,7 +454,7 @@ class MultimodalDialog(QDialog):
             )
         else:
             self.status.setText(
-                '已切换到普通本机模型。请填写自己部署的国内开源模型名称；不会连接学校服务。'
+                '已切换到普通本机模型（默认 Ollama 11434 · si-qwen3.5:9b）。可直接发送或点击“获取模型”。'
             )
 
     def connection_edited(self, _text=''):
