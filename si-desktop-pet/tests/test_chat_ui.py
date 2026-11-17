@@ -1,4 +1,4 @@
-"""Unit and lifecycle tests for MultimodalDialog in offscreen Qt mode."""
+﻿"""Unit and lifecycle tests for MultimodalDialog in offscreen Qt mode."""
 import os
 import sys
 import tempfile
@@ -57,7 +57,7 @@ class TestMultimodalDialog(unittest.TestCase):
         self.assertEqual(self.dialog.windowTitle(), '和祀聊聊 · 多模态聊聊')
         self.assertFalse(self.dialog.voice_mode)
         self.assertEqual(len(self.dialog.pending_images), 0)
-        self.assertIn('0 张', self.dialog.image_count_label.text())
+        self.assertIn('0 张', self.dialog.attach_label.text())
 
     def test_voice_mode_toggle(self):
         self.assertFalse(self.dialog.voice_mode)
@@ -68,12 +68,12 @@ class TestMultimodalDialog(unittest.TestCase):
 
     def test_clear_images(self):
         self.dialog.pending_images = [b'fake-image-1', b'fake-image-2']
-        self.dialog._update_image_label()
-        self.assertIn('2 张', self.dialog.image_count_label.text())
+        self.dialog._update_attach_label()
+        self.assertIn('2 张', self.dialog.attach_label.text())
 
         self.dialog.clear_images()
         self.assertEqual(len(self.dialog.pending_images), 0)
-        self.assertIn('0 张', self.dialog.image_count_label.text())
+        self.assertIn('0 张', self.dialog.attach_label.text())
 
     def test_clear_turns(self):
         self.dialog.session.turns = [{'user': '你好', 'assistant': '在呢'}]
@@ -89,7 +89,7 @@ class TestMultimodalDialog(unittest.TestCase):
         self.dialog.input.setPlainText('')
         self.dialog.pending_images = []
         self.dialog.submit()
-        self.assertIn('请输入文字或添加图片', self.dialog.status.text())
+        self.assertIn('请输入文字或附加图片', self.dialog.status.text())
         self.assertFalse(self.dialog.busy)
 
     def test_render_escapes_or_plain_text(self):
@@ -102,3 +102,4 @@ class TestMultimodalDialog(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
