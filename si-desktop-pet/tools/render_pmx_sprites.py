@@ -89,13 +89,9 @@ uniform vec3 uCamDir; // Normalized direction toward camera (-Z after yaw)
 
 out vec4 fragColor;
 
-vec3 aces_tonemap(vec3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+vec3 adjust_sat(vec3 c, float sat) {
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    return clamp(mix(vec3(l), c, sat), 0.0, 1.0);
 }
 
 void main() {
@@ -108,57 +104,79 @@ void main() {
         if (alpha <= 0.03 || alpha >= 0.85) discard;
     }
 
-    // Decode sRGB albedo into Linear space so darks stay deep & colors stay rich
-    vec3 albedo = pow(max(texel.rgb * uDiffuse.rgb, vec3(0.0001)), vec3(2.2));
+    vec3 raw = texel.rgb * uDiffuse.rgb;
+    float lum = dot(raw, vec3(0.299, 0.587, 0.114));
     vec3 N = normalize(vNormal);
     if (!gl_FrontFacing) N = -N;
 
-    // Studio Endfield 3-point lighting: front-top-left key + cool sky fill + subtle jade-white rim
-    vec3 L = normalize(vec3(-0.34, 0.54, -0.77));
+    // Classic Arknights key visual lighting: crisp upper-left key + subtle Fresnel rim
+    vec3 L = normalize(vec3(-0.38, 0.52, -0.76));
     vec3 V = normalize(uCamDir);
     vec3 H = normalize(L + V);
     float ndl = dot(N, L);
     float ndh = clamp(dot(N, H), 0.0, 1.0);
     float viewDot = clamp(dot(N, V), 0.0, 1.0);
-    float rim = pow(1.0 - viewDot, 3.5);
+    float rim = pow(1.0 - viewDot, 3.2);
 
-    vec3 linear_lit;
+    vec3 outCol;
     if (uMatKind == 0) {
-        // Face, iris, eyelashes: clean anime ramp preserving warm ivory skin & rich shadow under bangs/chin
-        float ramp = smoothstep(-0.35, 0.25, ndl);
-        vec3 lightEnv = mix(vec3(0.86, 0.82, 0.88), vec3(1.42, 1.38, 1.35), ramp);
-        linear_lit = albedo * lightEnv;
+        // Face, iris, highlights, eyelashes:
+        // Keep dark lashes/pupils crisp dark while lifting skin tones toward fair luminous porcelain
+        float isSkin = smoothstep(0.42, 0.62, lum);
+        vec3 liftedSkin = clamp(raw * vec3(1.19, 1.19, 1.21) + vec3(0.03, 0.015, 0.01), 0.0, 1.0);
+        vec3 eyeRich = adjust_sat(pow(max(raw, vec3(0.001)), vec3(1.15)), 1.32);
+        vec3 base = mix(eyeRich, liftedSkin, isSkin);
+        // Clean 2-band anime face shade (warm rose-peach shadow, radiant ivory lit)
+        float cel = smoothstep(-0.35, 0.12, ndl);
+        vec3 lightEnv = mix(vec3(0.93, 0.87, 0.90), vec3(1.02, 1.01, 1.00), cel);
+        outCol = mix(base, base * lightEnv, isSkin * 0.85);
     } else if (uMatKind == 1) {
-        // Skin (neck/arms/legs): subtle natural occlusion under skirt hem & chin, warm studio key
-        float underSkirt = smoothstep(10.0, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.2, vWorldPos.y));
-        float ao = mix(1.0, 0.78, underSkirt * 0.75);
-        float cel = smoothstep(-0.18, 0.28, ndl);
-        vec3 lightEnv = mix(vec3(0.60, 0.55, 0.65), vec3(1.46, 1.39, 1.35), cel) * ao;
-        linear_lit = albedo * lightEnv + vec3(0.05, 0.04, 0.04) * rim * cel;
+        // Skin (neck/arms/legs): fair luminous peachy-ivory matching official illustration
+        vec3 fairSkin = clamp(raw * vec3(1.22, 1.22, 1.23) + vec3(0.03, 0.015, 0.01), 0.0, 1.0);
+        // Very subtle soft ambient occlusion directly under skirt hem
+        float underSkirt = smoothstep(10.1, 11.3, vWorldPos.y) * (1.0 - smoothstep(11.3, 12.1, vWorldPos.y));
+        float ao = mix(1.0, 0.91, underSkirt);
+        float cel = smoothstep(-0.08, 0.14, ndl);
+        vec3 celTint = mix(vec3(0.91, 0.82, 0.86), vec3(1.03, 1.01, 1.00), cel) * ao;
+        outCol = fairSkin * celTint + vec3(0.04, 0.03, 0.03) * rim * cel;
     } else if (uMatKind == 3) {
-        // Hair: authentic saturated sage-mint with crisp anime angel-ring specular
-        float cel = smoothstep(-0.15, 0.24, ndl);
-        float spec = pow(ndh, 28.0) * 0.15 * cel;
-        vec3 lightEnv = mix(vec3(0.48, 0.59, 0.58), vec3(1.38, 1.40, 1.36), cel);
-        linear_lit = albedo * lightEnv + vec3(0.32, 0.44, 0.36) * spec + vec3(0.10, 0.16, 0.13) * rim;
+        // Hair: refined misty celadon-mint (cool jade shadow, soft pale highlight matching official splash art)
+        float isDarkStreak = 1.0 - smoothstep(0.24, 0.42, lum);
+        vec3 darkHair = pow(max(raw, vec3(0.001)), vec3(1.30)) * 0.78;
+        vec3 mintHair = adjust_sat(clamp(raw * vec3(1.05, 1.08, 1.08) + vec3(0.015, 0.025, 0.02), 0.0, 1.0), 1.02);
+        vec3 base = mix(mintHair, darkHair, isDarkStreak);
+        float cel = smoothstep(-0.06, 0.14, ndl);
+        float angel = pow(ndh, 36.0) * 0.18 * cel;
+        vec3 celTint = mix(vec3(0.73, 0.84, 0.83), vec3(1.06, 1.06, 1.05), cel);
+        outCol = base * celTint + vec3(0.24, 0.30, 0.28) * angel + vec3(0.10, 0.15, 0.13) * rim;
     } else if (uMatKind == 4) {
-        // Dragon tail & jade orb: sculpted contrast + emerald sheen
-        float cel = smoothstep(-0.15, 0.24, ndl);
-        float spec = pow(ndh, 24.0) * 0.16 * cel;
-        vec3 lightEnv = mix(vec3(0.50, 0.62, 0.62), vec3(1.44, 1.46, 1.42), cel);
-        linear_lit = albedo * lightEnv + vec3(0.25, 0.45, 0.38) * spec + vec3(0.12, 0.24, 0.20) * rim;
+        // Dragon tail & jade orb: rich vibrant emerald-teal + deep ink hardware + crisp specular
+        float isDark = 1.0 - smoothstep(0.22, 0.40, lum);
+        vec3 base = mix(adjust_sat(raw * 1.12, 1.28), pow(max(raw, vec3(0.001)), vec3(1.35)) * 0.80, isDark);
+        float cel = smoothstep(-0.06, 0.15, ndl);
+        float spec = pow(ndh, 28.0) * 0.22 * cel;
+        vec3 celTint = mix(vec3(0.74, 0.84, 0.84), vec3(1.07, 1.09, 1.06), cel);
+        outCol = base * celTint + vec3(0.25, 0.45, 0.38) * spec + vec3(0.10, 0.22, 0.18) * rim;
     } else {
-        // Dress, wide sleeves, armor, socks: crisp dark boots/trim, cool shadowed folds, clean highlights
-        float cel = smoothstep(-0.14, 0.24, ndl);
-        float spec = pow(ndh, 32.0) * 0.11 * cel;
-        vec3 lightEnv = mix(vec3(0.46, 0.52, 0.64), vec3(1.44, 1.45, 1.46), cel);
-        linear_lit = albedo * lightEnv + vec3(0.28, 0.32, 0.35) * spec + vec3(0.08, 0.11, 0.11) * rim;
+        // Dress, sleeves, boots, collar, ribbons, socks:
+        // Split cleanly: crush blacks for glossy ink-black boots/collar, boost midtones (blue/gold), lift whites to clean snow-white!
+        float isBlack = 1.0 - smoothstep(0.16, 0.34, lum);
+        float isWhite = smoothstep(0.56, 0.72, lum);
+        vec3 inkBlack = pow(max(raw, vec3(0.001)), vec3(1.55)) * 0.65;
+        vec3 vividMid = adjust_sat(raw * 1.08, 1.32);
+        vec3 snowWhite = clamp((raw - vec3(0.50)) * 1.48 + vec3(0.74), 0.0, 1.0);
+        snowWhite = adjust_sat(snowWhite, 0.92);
+        vec3 base = mix(vividMid, inkBlack, isBlack);
+        base = mix(base, snowWhite, isWhite);
+
+        float cel = smoothstep(-0.06, 0.14, ndl);
+        // Crisp glossy highlight especially on leather boots & armor
+        float gloss = pow(ndh, mix(42.0, 18.0, isBlack)) * mix(0.12, 0.38, isBlack) * cel;
+        vec3 celTint = mix(vec3(0.77, 0.82, 0.92), vec3(1.05, 1.045, 1.04), cel);
+        outCol = base * celTint + vec3(0.32, 0.36, 0.40) * gloss + vec3(0.08, 0.11, 0.12) * rim;
     }
 
-    vec3 mapped = aces_tonemap(linear_lit);
-    // Keep dark boots/trim rich charcoal-black without lifting shadow toe
-    vec3 srgb = pow(mapped, vec3(1.0 / 2.12));
-    fragColor = vec4(clamp(srgb, 0.0, 1.0), alpha);
+    fragColor = vec4(clamp(outCol, 0.0, 1.0), alpha);
 }
 """
 
