@@ -62,16 +62,47 @@ layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inUV;
 
 uniform mat4 uMVP;
+uniform mat4 uModelView;
 
 out vec3 vNormal;
 out vec2 vUV;
 out vec3 vWorldPos;
+out vec3 vViewPos;
+out vec3 vViewNormal;
 
 void main() {
     gl_Position = uMVP * vec4(inPos, 1.0);
     vNormal = inNormal;
     vUV = inUV;
     vWorldPos = inPos;
+    vViewPos = (uModelView * vec4(inPos, 1.0)).xyz;
+    vViewNormal = mat3(uModelView) * inNormal;
+}
+"""
+
+GBUF_FRAG_SHADER = """
+#version 330 core
+in vec2 vUV;
+in vec3 vViewPos;
+in vec3 vViewNormal;
+
+uniform sampler2D uTex;
+uniform vec4 uDiffuse;
+
+out vec4 fragColor;
+
+void main() {
+    float alpha = texture(uTex, vUV).a * uDiffuse.a;
+    if (alpha < 0.65) discard;
+    // Normalize view-space depth cleanly across [20.0 .. 90.0] into 16-bit RG
+    float d = clamp((vViewPos.z - 20.0) / 70.0, 0.0, 1.0);
+    float d_scaled = d * 255.0;
+    float hi = floor(d_scaled) / 255.0;
+    float lo = fract(d_scaled);
+    vec3 vn = normalize(vViewNormal);
+    if (!gl_FrontFacing) vn = -vn;
+    float nz = clamp(vn.z * 0.5 + 0.5, 0.0, 1.0);
+    fragColor = vec4(hi, lo, nz, 1.0);
 }
 """
 
@@ -80,12 +111,15 @@ FRAG_SHADER = """
 in vec3 vNormal;
 in vec2 vUV;
 in vec3 vWorldPos;
+in vec3 vViewPos;
+in vec3 vViewNormal;
 
 uniform sampler2D uTex;
 uniform vec4 uDiffuse;
 uniform int uMatKind; // 0=face/eye/brow, 1=skin, 2=cloth, 3=hair, 4=tail
 uniform int uPass;    // 0=opaque cutoff, 1=translucent edge blend
 uniform vec3 uCamDir; // Normalized direction toward camera (-Z after yaw)
+uniform float uPivotZ; // View-space Z of character root pivot for front-to-back layering
 
 out vec4 fragColor;
 
@@ -110,61 +144,76 @@ void main() {
     float minC = min(raw.r, min(raw.g, raw.b));
     float chroma = maxC - minC;
     vec3 N = normalize(vNormal);
-    if (!gl_FrontFacing) N = -N;
+    vec3 VN = normalize(vViewNormal);
+    bool isBackSide = !gl_FrontFacing;
+    if (isBackSide) {
+        N = -N;
+        VN = -VN;
+    }
 
-    // Classic Arknights key visual lighting: crisp upper-left key + subtle cool-slate rim
-    vec3 L = normalize(vec3(-0.30, 0.46, -0.83));
+    // Sculpted 3/4 upper-left studio key light (preserves 3D side rounding while keeping front dress crisp)
+    vec3 L = normalize(vec3(-0.44, 0.50, -0.74));
     vec3 V = normalize(uCamDir);
     vec3 H = normalize(L + V);
     float ndl = dot(N, L);
     float ndh = clamp(dot(N, H), 0.0, 1.0);
     float viewDot = clamp(dot(N, V), 0.0, 1.0);
-    float rim = pow(1.0 - viewDot, 3.2);
+    float rim = pow(1.0 - viewDot, 3.0);
+
+    // Relative depth from character plane: negative = foreground (face, chest, knees), positive = rear (back sleeves, back hair, tail)
+    float relZ = vViewPos.z - uPivotZ;
+    // Strong front-to-back separation: foreground pops bright (1.07), rear layers step cleanly back (0.71)
+    float rearFactor = smoothstep(0.10, 2.5, relZ);
+    float depthLight = mix(1.07, 0.71, rearFactor);
+    vec3 depthTint = mix(vec3(1.00, 1.00, 1.00), vec3(0.92, 0.96, 1.02), rearFactor);
+    // Interior surfaces (underside of skirt, back lining of wide cape sleeves behind legs) sit deeper in shadow
+    float innerShade = isBackSide ? 0.82 : 1.0;
 
     vec3 outCol;
     if (uMatKind == 0) {
-        // Face, iris, highlights, eyelashes: bright luminous ivory-cream preserving cheek blush & vivid blue eyes
+        // Face, iris, highlights, eyelashes: bright foreground with delicate bangs-shadow at top forehead & 3/4 cheek modeling
         float isSkin = smoothstep(0.42, 0.62, lum);
-        vec3 paleFace = adjust_sat(clamp(raw * 1.23 + vec3(0.04, 0.035, 0.035), 0.0, 1.0), 0.60);
+        float bangsShadow = smoothstep(18.75, 19.35, vWorldPos.y) * smoothstep(-0.4, -1.1, vWorldPos.z);
+        vec3 paleFace = adjust_sat(clamp(raw * 1.24 + vec3(0.04, 0.035, 0.035), 0.0, 1.0), 0.60);
         vec3 eyeRich = adjust_sat(pow(max(raw, vec3(0.001)), vec3(1.16)), 1.28);
         vec3 base = mix(eyeRich, paleFace, isSkin);
-        float cel = smoothstep(-0.38, 0.10, ndl);
-        vec3 lightEnv = mix(vec3(0.92, 0.88, 0.91), vec3(1.03, 1.015, 1.005), cel);
-        outCol = mix(base, base * lightEnv, isSkin * 0.85);
+        float cel = smoothstep(-0.22, 0.18, ndl);
+        vec3 lightEnv = mix(vec3(0.88, 0.84, 0.88), vec3(1.03, 1.015, 1.005), cel);
+        lightEnv *= mix(1.0, 0.90, bangsShadow * isSkin);
+        outCol = mix(base, base * lightEnv, isSkin * 0.88);
     } else if (uMatKind == 1) {
-        // Mat[7] body texture holds BOTH warm skin (R > B) and her cobalt-blue gloves (B >= R)!
+        // Mat[7]: warm skin vs cobalt gloves, with under-skirt leg cast shadow + neck shadow under chin + side torso rounding
         float isWarmSkin = smoothstep(-0.02, 0.06, raw.r - raw.b) * smoothstep(0.35, 0.55, lum);
-        vec3 paleSkin = adjust_sat(clamp(raw * 1.24 + vec3(0.04, 0.035, 0.035), 0.0, 1.0), 0.54);
+        vec3 paleSkin = adjust_sat(clamp(raw * 1.25 + vec3(0.04, 0.035, 0.035), 0.0, 1.0), 0.54);
         vec3 cobaltGlove = adjust_sat(clamp(raw * vec3(0.88, 1.05, 1.25), 0.0, 1.0), 1.48);
         vec3 base = mix(cobaltGlove, paleSkin, isWarmSkin);
-        float underSkirt = smoothstep(10.1, 11.3, vWorldPos.y) * (1.0 - smoothstep(11.3, 12.1, vWorldPos.y));
-        float ao = mix(1.0, 0.88, underSkirt * isWarmSkin);
-        float cel = smoothstep(-0.08, 0.14, ndl);
-        vec3 celTint = mix(vec3(0.84, 0.80, 0.84), vec3(1.02, 1.01, 1.00), cel) * ao;
-        outCol = base * celTint + vec3(0.04, 0.035, 0.035) * rim * cel;
+
+        float underSkirt = smoothstep(9.2, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.2, vWorldPos.y));
+        float underChin = smoothstep(17.1, 17.7, vWorldPos.y) * (1.0 - smoothstep(17.7, 18.2, vWorldPos.y));
+        float ao = mix(1.0, 0.80, underSkirt * isWarmSkin) * mix(1.0, 0.82, underChin * isWarmSkin);
+        float cel = smoothstep(-0.10, 0.18, ndl);
+        vec3 celTint = mix(vec3(0.77, 0.73, 0.79), vec3(1.03, 1.015, 1.005), cel) * ao;
+        outCol = base * celTint * mix(1.0, depthLight, 0.65) + vec3(0.04, 0.035, 0.035) * rim * cel;
     } else if (uMatKind == 3) {
-        // Hair: calm restrained sage-celadon green matching official art
+        // Hair: front bangs crisp & bright, rear hair twin-tails recessed cleanly in depth + cool celadon-jade shading
         float isDarkStreak = (1.0 - smoothstep(0.24, 0.42, lum)) * (1.0 - smoothstep(0.08, 0.20, chroma));
         vec3 darkHair = pow(max(raw, vec3(0.001)), vec3(1.35)) * 0.72;
         vec3 sageHair = adjust_sat(clamp(raw * vec3(1.01, 1.03, 0.99) + vec3(0.025, 0.03, 0.02), 0.0, 1.0), 0.60);
         vec3 base = mix(sageHair, darkHair, isDarkStreak);
-        float cel = smoothstep(-0.06, 0.15, ndl);
-        float angel = pow(ndh, 34.0) * 0.17 * cel;
-        vec3 celTint = mix(vec3(0.69, 0.77, 0.74), vec3(1.05, 1.05, 1.03), cel);
-        outCol = base * celTint + vec3(0.24, 0.27, 0.24) * angel + vec3(0.08, 0.11, 0.09) * rim;
+        float cel = smoothstep(-0.08, 0.16, ndl);
+        float angel = pow(ndh, 34.0) * 0.19 * cel;
+        vec3 celTint = mix(vec3(0.66, 0.75, 0.72), vec3(1.06, 1.06, 1.04), cel);
+        outCol = base * celTint * depthLight * depthTint + vec3(0.24, 0.27, 0.24) * angel + vec3(0.08, 0.11, 0.09) * rim * (1.0 - rearFactor * 0.5);
     } else if (uMatKind == 4) {
-        // Dragon tail & jade orb: rich emerald-teal + deep dark hardware
+        // Dragon tail & jade orb: depth separation behind ankles + crisp specular
         float isDark = (1.0 - smoothstep(0.22, 0.40, lum)) * (1.0 - smoothstep(0.08, 0.18, chroma));
         vec3 base = mix(adjust_sat(raw * 1.08, 1.02), pow(max(raw, vec3(0.001)), vec3(1.38)) * 0.74, isDark);
-        float cel = smoothstep(-0.06, 0.15, ndl);
+        float cel = smoothstep(-0.08, 0.16, ndl);
         float spec = pow(ndh, 28.0) * 0.22 * cel;
-        vec3 celTint = mix(vec3(0.70, 0.78, 0.78), vec3(1.06, 1.07, 1.05), cel);
-        outCol = base * celTint + vec3(0.22, 0.36, 0.32) * spec + vec3(0.08, 0.16, 0.14) * rim;
+        vec3 celTint = mix(vec3(0.68, 0.76, 0.76), vec3(1.06, 1.07, 1.05), cel);
+        outCol = base * celTint * mix(0.84, 1.0, 1.0 - rearFactor * 0.4) + vec3(0.22, 0.36, 0.32) * spec + vec3(0.08, 0.16, 0.14) * rim;
     } else {
-        // Clothes (Mat 8/9/10):
-        // True low-chroma black -> glossy ink black (boots/collar)
-        // Vivid midtones (chroma > 0.14) -> keep rich cobalt blue gloves/stripes & gold!
-        // Low-chroma whites -> pure neutral pearl snow-white (no baby-blue tint!)
+        // Clothes (Mat 8/9/10): strong foreground-vs-rear separation so front dress/legs pop in front of back sleeves!
         float isBlack = (1.0 - smoothstep(0.16, 0.32, lum)) * (1.0 - smoothstep(0.07, 0.16, chroma));
         float isLowChromaWhite = smoothstep(0.54, 0.70, lum) * (1.0 - smoothstep(0.09, 0.22, chroma));
         float isVivid = smoothstep(0.12, 0.26, chroma);
@@ -177,10 +226,12 @@ void main() {
         base = mix(base, inkBlack, isBlack);
         base = mix(base, pearlWhite, isLowChromaWhite);
 
-        float cel = smoothstep(-0.08, 0.12, ndl);
-        float gloss = pow(ndh, mix(40.0, 18.0, isBlack)) * mix(0.11, 0.38, isBlack) * cel;
-        vec3 celTint = mix(vec3(0.75, 0.79, 0.84), vec3(1.045, 1.045, 1.04), cel);
-        outCol = base * celTint + vec3(0.30, 0.33, 0.35) * gloss + vec3(0.06, 0.07, 0.08) * rim;
+        float cel = smoothstep(-0.08, 0.16, ndl);
+        float gloss = pow(ndh, mix(40.0, 18.0, isBlack)) * mix(0.11, 0.40, isBlack) * cel;
+        vec3 celTint = mix(vec3(0.70, 0.74, 0.81), vec3(1.05, 1.05, 1.04), cel);
+        // Apply rear-layer sleeve dimming & backface skirt/sleeve lining darkening!
+        float layerScale = mix(1.0, depthLight, 0.92) * innerShade;
+        outCol = base * celTint * layerScale * depthTint + vec3(0.30, 0.33, 0.35) * gloss + vec3(0.06, 0.07, 0.08) * rim * (1.0 - rearFactor * 0.5);
     }
 
     fragColor = vec4(clamp(outCol, 0.0, 1.0), alpha);
@@ -538,6 +589,10 @@ class GLPMXRenderer:
         resolve_fmt = QOpenGLFramebufferObjectFormat()
         self.resolve_fbo = QOpenGLFramebufferObject(width, height, resolve_fmt)
 
+        gbuf_fmt = QOpenGLFramebufferObjectFormat()
+        gbuf_fmt.setAttachment(QOpenGLFramebufferObject.Attachment.CombinedDepthStencil)
+        self.gbuf_fbo = QOpenGLFramebufferObject(width, height, gbuf_fmt)
+
         self.prog = QOpenGLShaderProgram()
         if not self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, VERT_SHADER):
             raise RuntimeError(self.prog.log())
@@ -545,6 +600,14 @@ class GLPMXRenderer:
             raise RuntimeError(self.prog.log())
         if not self.prog.link():
             raise RuntimeError(self.prog.log())
+
+        self.gbuf_prog = QOpenGLShaderProgram()
+        if not self.gbuf_prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, VERT_SHADER):
+            raise RuntimeError(self.gbuf_prog.log())
+        if not self.gbuf_prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, GBUF_FRAG_SHADER):
+            raise RuntimeError(self.gbuf_prog.log())
+        if not self.gbuf_prog.link():
+            raise RuntimeError(self.gbuf_prog.log())
 
         # Upload textures
         self.gl_textures: List[QOpenGLTexture] = []
@@ -673,9 +736,11 @@ class GLPMXRenderer:
             [0.0, 0.0, a_z, b_z],
             [0.0, 0.0, 1.0, 0.0],
         ], dtype=np.float32)
-        mvp = P @ V @ M_pivot
+        mv = V @ M_pivot
+        mvp = P @ mv
         from PySide6.QtGui import QMatrix4x4, QVector3D, QVector4D
         qm = QMatrix4x4(*mvp.flatten().tolist())
+        qmv = QMatrix4x4(*mv.flatten().tolist())
 
         cam_dir = (R_cam.T @ np.array([0.0, 0.0, -1.0], dtype=np.float32)).tolist()
 
@@ -694,7 +759,9 @@ class GLPMXRenderer:
 
         self.prog.bind()
         self.prog.setUniformValue('uMVP', qm)
+        self.prog.setUniformValue('uModelView', qmv)
         self.prog.setUniformValue('uCamDir', QVector3D(*cam_dir))
+        gl.glUniform1f(self.prog.uniformLocation('uPivotZ'), float(cam_dist))
         gl.glUniform1i(loc_tex, 0)
         self.vao.bind()
 
@@ -736,12 +803,63 @@ class GLPMXRenderer:
         self.prog.release()
         self.msaa_fbo.release()
 
+        # Pass 2: Lightweight depth+normal G-buffer for crisp foreground/background overlap ink lines
+        self.gbuf_fbo.bind()
+        gl.glViewport(0, 0, self.width, self.height)
+        gl.glClearColor(1.0, 1.0, 0.5, 0.0)
+        gl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        gl.glDisable(GL_BLEND)
+        gl.glEnable(GL_DEPTH_TEST)
+        gl.glDepthFunc(GL_LEQUAL)
+        gl.glDepthMask(True)
+
+        self.gbuf_prog.bind()
+        self.gbuf_prog.setUniformValue('uMVP', qm)
+        self.gbuf_prog.setUniformValue('uModelView', qmv)
+        gl.glUniform1i(self.gbuf_prog.uniformLocation('uTex'), 0)
+        self.vao.bind()
+        for i in self.draw_mats:
+            mat = self.model.materials[i]
+            ti = mat['tex']
+            if not (0 <= ti < len(self.gl_textures)):
+                continue
+            self.gl_textures[ti].bind(0)
+            self.gbuf_prog.setUniformValue('uDiffuse', QVector4D(*mat['diffuse']))
+            first = mat['tri_start'] * 3
+            cnt = (mat['tri_end'] - mat['tri_start']) * 3
+            gl.glDrawArrays(GL_TRIANGLES, first, cnt)
+        self.vao.release()
+        self.gbuf_prog.release()
+        self.gbuf_fbo.release()
+
         QOpenGLFramebufferObject.blitFramebuffer(self.resolve_fbo, self.msaa_fbo)
-        # Qt FBO toImage() returns premultiplied ARGB/RGBA; convert to straight RGBA8888 so
-        # semi-transparent pixels un-premultiply cleanly without dark halos.
         qimg = self.resolve_fbo.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-        ptr = qimg.bits()
-        arr = np.frombuffer(ptr, dtype=np.uint8).reshape((self.height, self.width, 4)).copy()
+        arr = np.frombuffer(qimg.bits(), dtype=np.uint8).reshape((self.height, self.width, 4)).copy()
+
+        # Compute crisp 2D/3D depth-jump separation contour (foreground layers get subtle dark-slate ink edge over background layers!)
+        gimg = self.gbuf_fbo.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        garr = np.frombuffer(gimg.bits(), dtype=np.uint8).reshape((self.height, self.width, 4))
+        depth = (garr[:, :, 0].astype(np.float32) * 256.0 + garr[:, :, 1].astype(np.float32)) / 65535.0 * 70.0
+        g_alpha = garr[:, :, 3] > 128
+
+        # Neighbor depth jumps (only where current pixel is IN FRONT of neighbor by >= 0.45 world units!)
+        edge = np.zeros((self.height, self.width), dtype=np.float32)
+        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            d_pad = np.pad(depth, ((1, 1), (1, 1)), mode='edge')
+            a_pad = np.pad(g_alpha, ((1, 1), (1, 1)), mode='constant', constant_values=False)
+            d_nb = d_pad[1 + dy:1 + dy + self.height, 1 + dx:1 + dx + self.width]
+            a_nb = a_pad[1 + dy:1 + dy + self.height, 1 + dx:1 + dx + self.width]
+            # Draw line ON the background side or silhouette step: current pixel is behind neighbor OR neighbor is closer foreground
+            fg_step = np.where(g_alpha & a_nb, np.clip((d_nb - depth - 0.35) * 0.45, 0.0, 1.0), 0.0)
+            edge = np.maximum(edge, fg_step)
+
+        # Blend subtle dark ink-slate contour (#28313a) at internal layer overlaps (front arms/legs/skirt/hair over back layers)
+        ink_alpha = (edge * 0.52)[:, :, None]
+        valid = (arr[:, :, 3:4] > 20)
+        ink_rgb = np.array([38.0, 46.0, 56.0], dtype=np.float32)
+        arr_f = arr[:, :, :3].astype(np.float32)
+        arr_f = np.where(valid, arr_f * (1.0 - ink_alpha) + ink_rgb * ink_alpha, arr_f)
+        arr[:, :, :3] = np.clip(arr_f, 0, 255).astype(np.uint8)
         return Image.fromarray(arr, 'RGBA')
 
 
