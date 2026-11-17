@@ -116,6 +116,7 @@ class Panel(QWidget):
             contact_menu.addAction(title,lambda checked=False,t=topic:self.ctrl.contact(t))
         contact.setMenu(contact_menu);right.addWidget(contact)
         right.addWidget(button('自由聊聊 · 本机或学校反代',self.open_conversation))
+        right.addWidget(button('多模态聊聊 · 图片与语音',self.open_multimodal_chat))
         self.contact_reply_text=label('选一个话题，她会认真听。','muted',True)
         right.addWidget(self.contact_reply_text)
         self.ctrl.contact_reply.connect(self.contact_reply_text.setText)
@@ -140,6 +141,22 @@ class Panel(QWidget):
             self.conversation_dialog.show();self.conversation_dialog.raise_();self.conversation_dialog.activateWindow()
         except ConversationError as exc:
             QMessageBox.warning(self,'对话暂不可用',str(exc))
+
+    def open_multimodal_chat(self):
+        from .chat_ui import MultimodalDialog
+        from .conversation import ConversationError
+        try:
+            if not hasattr(self, 'multimodal_dialog'):
+                self.multimodal_dialog = MultimodalDialog(
+                    self.ctrl,
+                    self.ctrl.store.path.parent / 'multimodal_conversation.json',
+                    self
+                )
+            self.multimodal_dialog.show()
+            self.multimodal_dialog.raise_()
+            self.multimodal_dialog.activateWindow()
+        except ConversationError as exc:
+            QMessageBox.warning(self, '多模态聊聊暂不可用', str(exc))
 
     def settings(self):
         body=QWidget();l=QVBoxLayout(body);l.setContentsMargins(0,0,12,0);l.setSpacing(16)
