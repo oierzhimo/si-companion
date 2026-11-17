@@ -99,47 +99,50 @@ void main() {
         if (alpha <= 0.03 || alpha >= 0.85) discard;
     }
 
-    vec3 base = texel.rgb * uDiffuse.rgb;
+    vec3 raw = texel.rgb * uDiffuse.rgb;
+    // Gentle PBR-albedo-to-anime lift so skin, white dress folds & eyes render bright without clipping darks
+    vec3 base = pow(max(raw, vec3(0.0)), vec3(0.84));
     vec3 N = normalize(vNormal);
     if (!gl_FrontFacing) N = -N;
 
-    // Key light from front-top-left + soft fill
-    vec3 L = normalize(vec3(-0.32, 0.52, -0.79));
+    // Bright studio key light from front-top-left + airy ambient fill
+    vec3 L = normalize(vec3(-0.28, 0.48, -0.83));
     float ndl = dot(N, L);
     float viewDot = clamp(dot(N, normalize(uCamDir)), 0.0, 1.0);
     float rim = pow(1.0 - viewDot, 3.0);
 
     vec3 lit;
     if (uMatKind == 0) {
-        // Face, iris, highlights, eyelashes: bright warm anime flat shading (no harsh nose shadow)
-        float soft = smoothstep(-0.65, 0.15, ndl);
-        vec3 shadowTint = mix(vec3(0.985, 0.955, 0.960), vec3(1.03, 1.015, 1.005), soft);
-        lit = base * shadowTint;
+        // Face, iris, highlights, eyelashes: luminous fair anime finish
+        float soft = smoothstep(-0.75, 0.15, ndl);
+        vec3 shadowTint = mix(vec3(0.97, 0.94, 0.96), vec3(1.05, 1.03, 1.02), soft);
+        lit = base * 1.16 * shadowTint;
     } else if (uMatKind == 1) {
-        // Skin: warm peach-ivory cel step
-        float cel = smoothstep(-0.20, 0.25, ndl);
-        vec3 shade = mix(vec3(0.91, 0.84, 0.86), vec3(1.03, 1.01, 1.00), cel);
-        lit = base * shade + vec3(0.025, 0.02, 0.02) * rim * cel;
+        // Skin: bright fair ivory-peach with delicate warm shadow
+        float cel = smoothstep(-0.30, 0.25, ndl);
+        vec3 shade = mix(vec3(0.92, 0.86, 0.89), vec3(1.06, 1.03, 1.02), cel);
+        lit = base * 1.18 * shade + vec3(0.03, 0.025, 0.025) * rim * cel;
     } else if (uMatKind == 3) {
-        // Hair: cool jade shadow + crisp rim highlight
-        float cel = smoothstep(-0.18, 0.20, ndl);
-        float hi = smoothstep(0.72, 0.92, ndl) * 0.07;
-        vec3 shade = mix(vec3(0.80, 0.86, 0.85), vec3(1.04, 1.04, 1.03), cel);
-        lit = base * shade + vec3(0.08, 0.14, 0.12) * hi + vec3(0.10, 0.17, 0.14) * rim;
+        // Hair: airy pastel mint-jade + crisp sheen
+        float cel = smoothstep(-0.25, 0.20, ndl);
+        float hi = smoothstep(0.68, 0.90, ndl) * 0.09;
+        vec3 shade = mix(vec3(0.86, 0.91, 0.90), vec3(1.06, 1.06, 1.04), cel);
+        lit = base * 1.16 * shade + vec3(0.10, 0.16, 0.13) * hi + vec3(0.10, 0.18, 0.15) * rim;
     } else if (uMatKind == 4) {
-        // Dragon tail & jade ring: slightly luminous jade sheen
-        float cel = smoothstep(-0.20, 0.20, ndl);
-        vec3 shade = mix(vec3(0.82, 0.90, 0.89), vec3(1.06, 1.07, 1.05), cel);
-        lit = base * shade + vec3(0.12, 0.24, 0.20) * rim;
+        // Dragon tail & jade ring: bright translucent jade & gold
+        float cel = smoothstep(-0.28, 0.20, ndl);
+        vec3 shade = mix(vec3(0.88, 0.95, 0.94), vec3(1.08, 1.09, 1.07), cel);
+        lit = base * 1.20 * shade + vec3(0.14, 0.26, 0.22) * rim;
     } else {
-        // Outfit / armor / ribbons / sheer socks
-        float cel = smoothstep(-0.15, 0.22, ndl);
-        vec3 shade = mix(vec3(0.80, 0.84, 0.90), vec3(1.05, 1.05, 1.04), cel);
-        lit = base * shade + vec3(0.08, 0.11, 0.10) * rim;
+        // Outfit / armor / ribbons / sheer socks: crisp studio white & blue contrast
+        float cel = smoothstep(-0.25, 0.22, ndl);
+        vec3 shade = mix(vec3(0.86, 0.89, 0.94), vec3(1.07, 1.07, 1.06), cel);
+        lit = base * 1.18 * shade + vec3(0.09, 0.12, 0.11) * rim;
     }
 
-    // Subtle filmic vibrance boost so eyes/dress/jade tones read crisply on desktop
-    vec3 saturated = mix(vec3(dot(lit, vec3(0.299, 0.587, 0.114))), lit, 1.08);
+    // Soft highlight shoulder compression + gentle vibrance boost
+    lit = lit / (1.0 + max(lit - vec3(0.86), vec3(0.0)) * 0.65);
+    vec3 saturated = mix(vec3(dot(lit, vec3(0.299, 0.587, 0.114))), lit, 1.06);
     fragColor = vec4(clamp(saturated, 0.0, 1.0), alpha);
 }
 """
