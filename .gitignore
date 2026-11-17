@@ -38,3 +38,8 @@ android-signing/
 /si-desktop-pet/mobile/android/tools/json-jvm-tests.jar
 /si-qq-bot/qa/
 /si-qq-bot/qa-test-temp/
+/si-desktop-pet/art-source/mmd-chaye/
+/si-desktop-pet/assets/hd-chibi-backup/
+/si-desktop-pet/.pydeps/
+*.pmx
+
