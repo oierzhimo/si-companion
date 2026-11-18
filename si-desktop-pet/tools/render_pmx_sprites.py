@@ -298,7 +298,11 @@ void main() {
         // so flame horns, armor plates, and cuffs show crisp deep-grey lit planes vs deep black crevices.
         float isDarkPiece = 1.0 - smoothstep(0.11, 0.24, lum);
         float inShoulderZone = smoothstep(13.5, 14.3, vWorldPos.y) * max(smoothstep(0.75, 1.35, abs(vWorldPos.x)), smoothstep(15.6, 16.2, vWorldPos.y));
+        float inWedgeBand = smoothstep(12.85, 13.35, vWorldPos.y) * (1.0 - smoothstep(15.10, 15.50, vWorldPos.y))
+                          * smoothstep(1.80, 2.15, abs(vWorldPos.x)) * (1.0 - smoothstep(0.65, 0.95, vWorldPos.z));
         float isDarkShoulder = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * inShoulderZone;
+        float isDarkWedge = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * inWedgeBand;
+        float isDarkUpperOrWedge = max(isDarkShoulder, isDarkWedge);
 
         float facingDarkOther = smoothstep(-0.08, 0.56, ndl_dark);
         vec3 darkShadowOther = max(raw * 0.84, vec3(0.045));
@@ -310,18 +314,14 @@ void main() {
         vec3 shoulderLit = min(raw * 0.96 + vec3(0.028), vec3(0.27));
         vec3 darkShoulder = mix(shoulderShadow, shoulderLit, facingShoulder);
 
-        // Specifically for the solid flared cuff band & strap directly above the blue sleeves (y in 13.5..15.65, |x| > 1.75):
-        // keep upper shoulder armor/flame horns untouched, preserve carved rib & bevel surface lighting across [-0.08..0.72]
-        // so the band never crushes into a flat black bar, and confine dark occlusion to tight contact seams only
-        float isCuffBandZone = smoothstep(13.5, 13.9, vWorldPos.y) * (1.0 - smoothstep(15.25, 15.65, vWorldPos.y)) * smoothstep(1.75, 2.25, abs(vWorldPos.x));
-        float facingCuff = smoothstep(-0.08, 0.72, ndl_shoulder);
-        vec3 cuffShadow = max(raw * 0.72, vec3(0.055));
-        vec3 cuffLit = min(raw * 1.15 + vec3(0.042), vec3(0.32));
-        vec3 darkCuffBand = mix(cuffShadow, cuffLit, facingCuff);
-        darkShoulder = mix(darkShoulder, darkCuffBand, isCuffBandZone);
+        // Elevate the thick dark wedge/band right above the blue sleeves (y in 12.85..15.50, |x| > 1.80, front z < 1.2)
+        // into a coordinated medium-dark slate grey with clear surface hierarchy, reducing harsh contrast against blue sleeves
+        // while keeping narrow deep-dark shadow strictly inside tight seams
+        vec3 wedgeSlateBase = clamp(raw * 1.45 + vec3(0.115, 0.120, 0.130), 0.0, 0.50);
+        darkShoulder = mix(darkShoulder, wedgeSlateBase, isDarkWedge);
 
-        float darkBlend = max(isDarkPiece, isDarkShoulder);
-        vec3 base = mix(raw, mix(darkOther, darkShoulder, isDarkShoulder), darkBlend);
+        float darkBlend = max(isDarkPiece, isDarkUpperOrWedge);
+        vec3 base = mix(raw, mix(darkOther, darkShoulder, isDarkUpperOrWedge), darkBlend);
         float isLightCloth = smoothstep(0.55, 0.72, lum) * (1.0 - smoothstep(0.10, 0.22, chroma));
         // Remove additive lift (+0.022) so light-grey dress keeps crisp neutral grey & original patterns without milky haze
         vec3 softCloth = adjust_sat(clamp(raw * 1.09, 0.0, 0.95), 0.12);
@@ -332,14 +332,14 @@ void main() {
         float darkCreviceOther = mix(0.54, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.84, collarSeam);
         float tightCrevice = smoothstep(0.05, 0.28, clamp(bakedAO, 0.0, 1.0));
         float darkCreviceShoulder = mix(0.38, 1.0, tightCrevice) * mix(1.0, 0.80, collarSeam * 0.75);
-        float tightCuffSeam = smoothstep(0.02, 0.15, clamp(bakedAO, 0.0, 1.0));
-        float darkCreviceCuff = mix(0.62, 1.0, tightCuffSeam);
-        darkCreviceShoulder = mix(darkCreviceShoulder, darkCreviceCuff, isCuffBandZone);
-        float darkCreviceAO = mix(darkCreviceOther, darkCreviceShoulder, isDarkShoulder);
+        float tightWedgeSeam = smoothstep(0.02, 0.16, clamp(bakedAO, 0.0, 1.0));
+        float darkCreviceWedge = mix(0.44, 1.0, tightWedgeSeam);
+        darkCreviceShoulder = mix(darkCreviceShoulder, darkCreviceWedge, isDarkWedge);
+        float darkCreviceAO = mix(darkCreviceOther, darkCreviceShoulder, isDarkUpperOrWedge);
         float finalAO = mix(clothSeamAO, darkCreviceAO, darkBlend);
         float darkInnerOther = mix(innerShade, isBackSide ? 0.74 : 1.0, isDarkPiece);
-        float darkInnerShoulder = mix(trueBack ? 0.65 : 1.0, trueBack ? 0.80 : 1.0, isCuffBandZone);
-        float darkInner = mix(darkInnerOther, darkInnerShoulder, isDarkShoulder);
+        float darkInnerShoulder = mix(trueBack ? 0.65 : 1.0, trueBack ? 0.84 : 1.0, isDarkWedge);
+        float darkInner = mix(darkInnerOther, darkInnerShoulder, isDarkUpperOrWedge);
 
         // Fix inverted CW winding & restore broad major-fold volume on grey dress & long side capes:
         // preserve raw inherent slate-grey hue & full pattern contrast (no whitewash, no flattening),
@@ -357,10 +357,11 @@ void main() {
 
         vec3 envOther = mix(vec3(0.76, 0.77, 0.79), vec3(1.05, 1.05, 1.05), volumeRamp);
         vec3 envShoulder = mix(vec3(0.72, 0.74, 0.78), vec3(1.04, 1.04, 1.04), smoothstep(0.05, 0.75, ndl_shoulder));
-        vec3 envCuff = mix(vec3(0.78, 0.80, 0.84), vec3(1.02, 1.02, 1.02), smoothstep(-0.08, 0.68, ndl_shoulder));
-        envShoulder = mix(envShoulder, envCuff, isCuffBandZone);
-        vec3 lightEnv = mix(envOther, envShoulder, isDarkShoulder);
-        vec3 stdCol = base * lightEnv * finalAO * darkInner * depthAtten;
+        vec3 envWedge = mix(vec3(0.74, 0.76, 0.80), vec3(1.00, 1.00, 1.00), smoothstep(-0.15, 0.75, ndl_shoulder));
+        envShoulder = mix(envShoulder, envWedge, isDarkWedge);
+        vec3 lightEnv = mix(envOther, envShoulder, isDarkUpperOrWedge);
+        float wedgeDepth = mix(depthAtten, mix(depthAtten, 1.0, 0.65), isDarkWedge);
+        vec3 stdCol = base * lightEnv * finalAO * darkInner * wedgeDepth;
         outCol = mix(stdCol, dressCapeCol, inDressOrCape);
     }
 
@@ -1060,8 +1061,8 @@ class GLPMXRenderer:
 
             # Lower threshold on hair (mat_id == 3) for bangs/buns separation; keep cloth depth contour subtle & thin
             is_hair = (mat_id == 3) | (m_nb == 3)
-            d_thresh = np.where(is_hair, 0.11, 0.34)
-            fg_slope = np.where(is_hair, 0.80, 0.45)
+            d_thresh = np.where(is_hair, 0.11, 0.42)
+            fg_slope = np.where(is_hair, 0.80, 0.35)
             fg_step = np.where(g_alpha & a_nb, np.clip((d_nb - depth - d_thresh) * fg_slope, 0.0, 1.0), 0.0)
             mat_step = np.where(g_alpha & a_nb & is_hair & (mat_id != m_nb), 0.48, 0.0)
             edge = np.maximum(edge, np.maximum(fg_step, mat_step))
@@ -1079,7 +1080,7 @@ class GLPMXRenderer:
             np.array([48.0, 68.0, 60.0], dtype=np.float32),
             np.array([46.0, 54.0, 64.0], dtype=np.float32),
         )
-        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.18, 0.09))[:, :, None]
+        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.18, 0.06))[:, :, None]
         valid = (arr[:, :, 3:4] > 20)
         arr_f = arr[:, :, :3].astype(np.float32)
         arr_f = np.where(valid, arr_f * (1.0 - ink_alpha) + ink_rgb * ink_alpha, arr_f)
