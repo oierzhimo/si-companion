@@ -201,7 +201,7 @@ void main() {
         float nz = (nSamp.b < 0.05) ? sqrt(max(0.0, 1.0 - nx * nx - ny * ny)) : (nSamp.b * 2.0 - 1.0);
         N_shoulder = perturb_normal(N_trueFront, vWorldPos, vUV, vec3(nx, ny, nz), 0.48);
         // Gentle normal perturbation on dress/cape so major folds guide shading without fragmenting prints
-        N_clothTrue = perturb_normal(N_trueFront, vWorldPos, vUV, vec3(nx, ny, nz), 0.22);
+        N_clothTrue = perturb_normal(N_trueFront, vWorldPos, vUV, vec3(nx, ny, nz), 0.28);
     }
 
     vec4 packSamp = (uHasPack == 1) ? texture(uPackTex, vUV) : vec4(0.0, 0.0, 1.0, 0.5);
@@ -214,7 +214,7 @@ void main() {
     float ndl_dark = dot(normalize(mix(N_geom, N, 0.58)), L);
     float ndl_skin = dot(N_trueFront, L);
     float ndl_shoulder = dot(normalize(mix(N_trueFront, N_shoulder, 0.62)), L);
-    float ndl_cloth = dot(normalize(mix(N_trueFront, N_clothTrue, 0.28)), L);
+    float ndl_cloth = dot(normalize(mix(N_trueFront, N_clothTrue, 0.38)), L);
 
     // Clear yet soft 3-band volume transition (lit -> transition -> shadow)
     float volumeRamp = smoothstep(-0.20, 0.34, ndl);
@@ -328,15 +328,18 @@ void main() {
         float darkInnerShoulder = trueBack ? 0.65 : 1.0;
         float darkInner = mix(darkInnerOther, darkInnerShoulder, isDarkShoulder);
 
-        // Fix inverted CW winding & wrong backface darkening on grey dress & long side capes (keep socks, dark trim, and shoulder armor unchanged!)
+        // Fix inverted CW winding & restore broad major-fold volume on grey dress & long side capes:
+        // preserve raw inherent slate-grey hue & full pattern contrast (no whitewash, no flattening),
+        // span clothRamp across actual turning planes [0.12 .. 0.92], and retain inner/overlap shadows cleanly
         float inDressOrCape = (1.0 - darkBlend) * max(smoothstep(7.5, 8.5, vWorldPos.y), smoothstep(1.75, 2.25, abs(vWorldPos.x)));
-        float clothRamp = smoothstep(-0.22, 0.72, ndl_cloth);
-        vec3 baseClothClean = mix(raw, adjust_sat(raw, 0.14), isLightCloth);
-        baseClothClean = mix(baseClothClean, adjust_sat(baseClothClean, 1.15), smoothstep(0.14, 0.28, chroma));
-        vec3 envDressCape = mix(vec3(0.71, 0.725, 0.755), vec3(0.925, 0.93, 0.935), clothRamp);
-        float cleanSeamAO = mix(0.96, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.92, collarSeam * 0.5);
-        float cleanInner = trueBack ? 0.85 : 1.0;
-        float cleanDepth = mix(1.0, 0.90, rearFactor);
+        float isCapeWing = smoothstep(1.9, 2.5, abs(vWorldPos.x)) * (1.0 - smoothstep(13.2, 14.5, vWorldPos.y));
+        float clothRamp = smoothstep(0.12, 0.92, ndl_cloth);
+        vec3 baseClothClean = mix(raw, adjust_sat(raw, 1.12), smoothstep(0.14, 0.28, chroma));
+        vec3 envDressCape = mix(vec3(0.69, 0.71, 0.75), vec3(0.935, 0.94, 0.945), clothRamp);
+        envDressCape *= mix(1.0, 0.92, isCapeWing);
+        float cleanSeamAO = mix(0.92, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.90, collarSeam * 0.6);
+        float cleanInner = trueBack ? 0.82 : 1.0;
+        float cleanDepth = mix(1.0, 0.88, rearFactor);
         vec3 dressCapeCol = baseClothClean * envDressCape * cleanSeamAO * cleanInner * cleanDepth;
 
         vec3 envOther = mix(vec3(0.76, 0.77, 0.79), vec3(1.05, 1.05, 1.05), volumeRamp);
