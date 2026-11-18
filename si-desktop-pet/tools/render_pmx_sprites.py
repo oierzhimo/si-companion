@@ -181,8 +181,8 @@ void main() {
         float nx = nSamp.r * 2.0 - 1.0;
         float ny = nSamp.g * 2.0 - 1.0;
         float nz = (nSamp.b < 0.05) ? sqrt(max(0.0, 1.0 - nx * nx - ny * ny)) : (nSamp.b * 2.0 - 1.0);
-        // Smooth restrained normal strength: crisp folds on cloth without high-freq texture noise
-        float nStrength = (uMatKind == 3) ? 0.45 : ((uMatKind == 1) ? 0.45 : 0.85);
+        // Smooth restrained normal strength: preserves sculpted folds & weaves without gritty noise
+        float nStrength = (uMatKind == 3) ? 0.30 : ((uMatKind == 1) ? 0.35 : 0.62);
         N = perturb_normal(N_geom, vWorldPos, vUV, vec3(nx, ny, nz), nStrength);
     }
 
@@ -190,114 +190,124 @@ void main() {
     float bakedAO = (uHasPack == 1) ? packSamp.b : 1.0;
     float metallic = (uHasPack == 1) ? packSamp.r : 0.0;
 
-    // Soft side-front-above Studio Key Light (keeps visual focus on face & upper body, weak fill)
-    vec3 L = normalize(vec3(-0.34, 0.68, -0.65));
+    // Soft side-front-above Studio Key Light (~42° side, ~40° above) for genuine cylindrical 3D modeling!
+    vec3 L = normalize(vec3(-0.48, 0.62, -0.62));
     vec3 V = normalize(uCamDir);
     vec3 H = normalize(L + V);
     float ndl = dot(N, L);
     float ndl_geom = dot(N_geom, L);
     float ndh = clamp(dot(N, H), 0.0, 1.0);
     float viewDot = clamp(dot(N_geom, V), 0.0, 1.0);
-    float rim = pow(1.0 - viewDot, 3.2);
 
-    // Front-to-back depth layering & subtle top-to-bottom visual focus on face/upper body
+    // Front-to-back depth layering & gentle upper-body focus
     float relZ = vViewPos.z - uPivotZ;
-    float rearFactor = smoothstep(0.10, 2.4, relZ);
-    float depthLight = mix(1.05, 0.72, rearFactor);
+    float rearFactor = smoothstep(0.10, 2.2, relZ);
+    float depthLight = mix(1.04, 0.70, rearFactor);
     vec3 depthTint = mix(vec3(1.00, 1.00, 1.00), vec3(0.92, 0.96, 1.02), rearFactor);
-    float innerShade = isBackSide ? 0.80 : 1.0;
-    float upperFocus = mix(0.94, 1.04, smoothstep(2.5, 17.5, vWorldPos.y));
+    // Clean interior shadow on inner skirt & back cape-sleeve lining (keeps dark details readable)
+    float innerShade = isBackSide ? 0.74 : 1.0;
+    float upperFocus = mix(0.95, 1.04, smoothstep(2.5, 17.5, vWorldPos.y));
 
     vec3 outCol;
     if (uMatKind == 0) {
-        // Face, iris, eyelashes: clean translucent ivory skin, warm rose-peach cheek shadow (no muddy grey!)
+        // Face, iris, eyelashes: clean luminous porcelain skin with distinct bangs contact shadow & side cheek modeling
         float isSkin = smoothstep(0.42, 0.62, lum);
-        float bangsShadow = smoothstep(18.82, 19.38, vWorldPos.y) * smoothstep(-0.35, -1.1, vWorldPos.z);
-        vec3 paleFace = adjust_sat(clamp(raw * 1.24 + vec3(0.04, 0.032, 0.03), 0.0, 1.0), 0.64);
-        vec3 eyeRich = adjust_sat(pow(max(raw, vec3(0.001)), vec3(1.14)), 1.30);
+        float bangsShadow = smoothstep(18.80, 19.35, vWorldPos.y) * smoothstep(-0.35, -1.1, vWorldPos.z);
+        vec3 paleFace = adjust_sat(clamp(raw * 1.24 + vec3(0.04, 0.032, 0.03), 0.0, 1.0), 0.62);
+        vec3 eyeRich = adjust_sat(pow(max(raw, vec3(0.001)), vec3(1.12)), 1.26);
         vec3 base = mix(eyeRich, paleFace, isSkin);
-        float cel = smoothstep(-0.38, 0.16, ndl_geom);
-        vec3 lightEnv = mix(vec3(0.93, 0.87, 0.90), vec3(1.045, 1.03, 1.015), cel);
-        // Clean warm-taupe contact shadow from hair bangs onto upper forehead
-        lightEnv *= mix(1.0, 0.87, bangsShadow * isSkin);
-        outCol = mix(base, base * lightEnv, isSkin * 0.92);
+        float cel = smoothstep(-0.28, 0.30, ndl_geom);
+        vec3 lightEnv = mix(vec3(0.91, 0.85, 0.89), vec3(1.045, 1.03, 1.015), cel);
+        // Clean lavender-taupe cast shadow under bangs
+        lightEnv *= mix(1.0, 0.80, bangsShadow * isSkin);
+        outCol = mix(base, base * lightEnv, isSkin * 0.94);
     } else if (uMatKind == 1) {
-        // Mat[7] body: translucent ivory skin (chin/collarbone/skirt contact shadows) + layered azure-cobalt sleeves!
+        // Mat[7] body: soft cylindrical skin shading (ZERO bright leg rim!) + restrained cobalt sleeves with crisp pattern
         float isWarmSkin = smoothstep(-0.02, 0.06, raw.r - raw.b) * smoothstep(0.35, 0.55, lum);
-        vec3 paleSkin = adjust_sat(clamp(raw * 1.25 + vec3(0.04, 0.032, 0.03), 0.0, 1.0), 0.60);
-        // Rich azure-to-royal-cobalt sleeve & glove gradient
-        vec3 cobaltGlove = adjust_sat(clamp(raw * vec3(0.86, 1.05, 1.26), 0.0, 1.0), 1.44);
+        vec3 paleSkin = adjust_sat(clamp(raw * 1.24 + vec3(0.04, 0.032, 0.03), 0.0, 1.0), 0.58);
+        // Restrained saturation (1.16) keeps forearm dragon pattern & sleeve gradient crystal clear without neon cyan
+        vec3 cobaltGlove = adjust_sat(clamp(raw * vec3(0.92, 1.04, 1.18), 0.0, 1.0), 1.16);
         vec3 base = mix(cobaltGlove, paleSkin, isWarmSkin);
 
-        float underSkirt = smoothstep(9.1, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.2, vWorldPos.y));
-        float underChin = smoothstep(16.95, 17.65, vWorldPos.y) * (1.0 - smoothstep(17.65, 18.25, vWorldPos.y));
-        float ao = mix(1.0, 0.72, underSkirt * isWarmSkin) * mix(1.0, 0.72, underChin * isWarmSkin);
-        float cel = smoothstep(-0.10, 0.22, ndl);
-        vec3 skinShade = mix(vec3(0.80, 0.74, 0.79), vec3(1.045, 1.025, 1.01), cel);
-        vec3 blueShade = mix(vec3(0.56, 0.67, 0.88), vec3(1.08, 1.10, 1.12), cel);
+        // Clean localized contact shadows: under skirt hem, under chin on neck, collar rim, and underarms
+        float underSkirt = smoothstep(9.0, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.2, vWorldPos.y));
+        float underChin = smoothstep(17.15, 17.85, vWorldPos.y) * (1.0 - smoothstep(17.85, 18.35, vWorldPos.y));
+        float collarContact = smoothstep(16.25, 16.75, vWorldPos.y) * (1.0 - smoothstep(16.75, 17.25, vWorldPos.y));
+        float axilla = smoothstep(14.3, 15.6, vWorldPos.y) * (1.0 - smoothstep(15.6, 16.4, vWorldPos.y))
+                     * smoothstep(0.85, 1.45, abs(vWorldPos.x)) * (1.0 - smoothstep(1.45, 2.05, abs(vWorldPos.x)));
+        float ao = mix(1.0, 0.72, underSkirt * isWarmSkin)
+                 * mix(1.0, 0.70, underChin * isWarmSkin)
+                 * mix(1.0, 0.84, collarContact * isWarmSkin)
+                 * mix(1.0, 0.76, axilla * isWarmSkin);
+
+        // Smooth cylindrical wrap lighting without bright rim outline on legs!
+        float wrap = smoothstep(-0.26, 0.46, ndl);
+        vec3 skinShade = mix(vec3(0.79, 0.73, 0.79), vec3(1.04, 1.025, 1.01), wrap);
+        vec3 blueShade = mix(vec3(0.60, 0.69, 0.88), vec3(1.07, 1.08, 1.10), wrap);
         vec3 celTint = mix(blueShade, skinShade, isWarmSkin) * ao;
-        outCol = base * celTint * mix(1.0, depthLight, 0.72) * upperFocus + vec3(0.04, 0.035, 0.035) * rim * cel;
+        outCol = base * celTint * mix(1.0, depthLight, 0.75) * upperFocus;
     } else if (uMatKind == 3) {
-        // Hair: rich celadon-green color layers, cohesive block angel-ring highlight, clean contact & clump depth
+        // Hair: rich celadon-green depth, cohesive restrained block highlight, smooth clean shading (no gritty stripes!)
         float isDarkStreak = (1.0 - smoothstep(0.24, 0.42, lum)) * (1.0 - smoothstep(0.08, 0.20, chroma));
-        vec3 darkHair = pow(max(raw, vec3(0.001)), vec3(1.36)) * 0.70;
-        vec3 greenHair = adjust_sat(clamp(raw * vec3(1.04, 1.08, 1.00) + vec3(0.025, 0.04, 0.02), 0.0, 1.0), 0.78);
+        vec3 darkHair = pow(max(raw, vec3(0.001)), vec3(1.26)) * 0.74;
+        vec3 greenHair = adjust_sat(clamp(raw * vec3(1.03, 1.08, 1.00) + vec3(0.025, 0.04, 0.02), 0.0, 1.0), 0.80);
         vec3 base = mix(greenHair, darkHair, isDarkStreak);
 
-        float lockEdge = smoothstep(0.04, 0.30, viewDot);
-        float aoShade = mix(0.76, 1.06, clamp(bakedAO, 0.0, 1.0));
-        float cel = smoothstep(-0.12, 0.22, ndl * 0.50 + ndl_geom * 0.50);
+        float aoShade = mix(0.84, 1.04, clamp(bakedAO, 0.0, 1.0));
+        float cel = smoothstep(-0.18, 0.34, ndl * 0.35 + ndl_geom * 0.65);
         float crownGlow = smoothstep(18.0, 20.6, vWorldPos.y);
         float specMask = (uHasSpec == 1) ? texture(uSpecTex, vUV).r : 0.7;
-        // Cohesive restrained anime highlight block (smooth cel-band, not noisy streaks!)
-        float blockAngle = smoothstep(0.52, 0.74, exp(-pow((vWorldPos.y - 19.62) * 2.1, 2.0)) * smoothstep(-0.05, 0.35, ndl_geom));
-        float angel = blockAngle * smoothstep(0.25, 0.65, specMask) * 0.16 * cel;
+        // Cohesive curved anime highlight block across front-upper bangs & crown
+        float band = exp(-pow((vWorldPos.y - 19.58) * 2.0, 2.0)) * smoothstep(-0.15, 0.35, ndl_geom);
+        float blockHi = smoothstep(0.38, 0.68, band * smoothstep(0.22, 0.62, specMask));
+        float angel = blockHi * 0.15 * cel;
 
-        vec3 celTint = mix(vec3(0.60, 0.74, 0.69), vec3(1.10, 1.12, 1.05), cel);
-        celTint *= mix(0.88, 1.08, crownGlow) * mix(0.84, 1.02, lockEdge) * aoShade;
-        outCol = base * celTint * mix(1.0, depthLight, 0.85) * depthTint + vec3(0.26, 0.32, 0.26) * angel + vec3(0.07, 0.10, 0.08) * rim * (1.0 - rearFactor * 0.5);
+        vec3 celTint = mix(vec3(0.62, 0.76, 0.71), vec3(1.10, 1.12, 1.05), cel);
+        celTint *= mix(0.88, 1.07, crownGlow) * aoShade;
+        outCol = base * celTint * mix(1.0, depthLight, 0.85) * depthTint + vec3(0.24, 0.30, 0.24) * angel;
     } else if (uMatKind == 4) {
-        // Dragon tail & jade orb: sculpted jade & dark hardware
+        // Dragon tail & jade orb: sculpted jade & readable dark hardware
         float isDark = (1.0 - smoothstep(0.22, 0.40, lum)) * (1.0 - smoothstep(0.08, 0.18, chroma));
-        vec3 base = mix(adjust_sat(raw * 1.08, 1.02), pow(max(raw, vec3(0.001)), vec3(1.36)) * 0.74, isDark);
-        float cel = smoothstep(-0.10, 0.22, ndl);
+        vec3 base = mix(adjust_sat(raw * 1.08, 1.02), pow(max(raw, vec3(0.001)), vec3(1.26)) * 0.76, isDark);
+        float cel = smoothstep(-0.16, 0.32, ndl);
         float spec = pow(ndh, 24.0) * 0.18 * cel;
-        vec3 celTint = mix(vec3(0.64, 0.74, 0.74), vec3(1.06, 1.07, 1.04), cel) * mix(0.76, 1.02, bakedAO);
-        outCol = base * celTint * mix(0.82, 1.0, 1.0 - rearFactor * 0.45) + vec3(0.20, 0.34, 0.30) * spec + vec3(0.06, 0.14, 0.12) * rim;
+        vec3 celTint = mix(vec3(0.66, 0.76, 0.76), vec3(1.06, 1.07, 1.04), cel) * mix(0.82, 1.02, bakedAO);
+        outCol = base * celTint * mix(0.82, 1.0, 1.0 - rearFactor * 0.45) + vec3(0.18, 0.30, 0.26) * spec;
     } else {
-        // Clothes (Mat 8/9/10): soft matte fabric + clear metal hardware gleam + satin leather boots!
+        // Clothes (Mat 8/9/10): clear 3-tier value separation (off-white dress / deeper slate cape / readable ink black)
         float isBlack = (1.0 - smoothstep(0.16, 0.32, lum)) * (1.0 - smoothstep(0.07, 0.16, chroma));
-        float isLowChromaWhite = smoothstep(0.54, 0.70, lum) * (1.0 - smoothstep(0.09, 0.22, chroma));
+        float isLowChromaWhite = smoothstep(0.52, 0.68, lum) * (1.0 - smoothstep(0.09, 0.22, chroma));
         float isVivid = smoothstep(0.12, 0.26, chroma);
 
-        vec3 inkBlack = pow(max(raw, vec3(0.001)), vec3(1.52)) * 0.62;
-        vec3 pearlWhite = adjust_sat(clamp((raw - vec3(0.36)) * 1.42 + vec3(0.76), 0.0, 1.0), 0.10);
+        // Preserve readable dark seam details on boots & collar (avoid dead black!)
+        vec3 inkBlack = pow(max(raw, vec3(0.001)), vec3(1.26)) * 0.72;
+        vec3 pearlWhite = adjust_sat(clamp((raw - vec3(0.32)) * 1.38 + vec3(0.76), 0.0, 1.0), 0.10);
         vec3 calmSlate = adjust_sat(raw * 1.02, 0.56);
-        vec3 vividAccent = adjust_sat(clamp(raw * 1.15, 0.0, 1.0), 1.36);
+        vec3 vividAccent = adjust_sat(clamp(raw * 1.12, 0.0, 1.0), 1.30);
         vec3 base = mix(calmSlate, vividAccent, isVivid);
         base = mix(base, inkBlack, isBlack);
         base = mix(base, pearlWhite, isLowChromaWhite);
 
-        // Smooth cavity AO without blotchy grit on lower skirt
-        float ao = mix(0.80, 1.03, clamp(bakedAO, 0.0, 1.0));
-        // Subtle collar/neck contact occlusion on upper dress collar & sleeve overlaps
+        // Clean smooth AO without gritty lower-skirt blotches
+        float ao = mix(0.86, 1.02, clamp(bakedAO, 0.0, 1.0));
         float collarShadow = smoothstep(15.6, 16.4, vWorldPos.y) * (1.0 - smoothstep(16.4, 17.0, vWorldPos.y));
-        ao *= mix(1.0, 0.88, collarShadow * 0.5);
+        float underArm = smoothstep(13.8, 15.2, vWorldPos.y) * (1.0 - smoothstep(15.2, 16.0, vWorldPos.y))
+                       * smoothstep(1.1, 1.8, abs(vWorldPos.x)) * (1.0 - smoothstep(1.8, 2.6, abs(vWorldPos.x)));
+        ao *= mix(1.0, 0.86, collarShadow * 0.55) * mix(1.0, 0.80, underArm * 0.65);
 
-        float cel = smoothstep(-0.14, 0.22, ndl);
-        float softWrap = smoothstep(-0.40, 0.62, ndl);
-        // Material separation: matte cloth (~0 gloss), satin leather boots (~0.24), crisp metal trim (~0.52)
+        float cel = smoothstep(-0.20, 0.34, ndl);
+        float softWrap = smoothstep(-0.45, 0.65, ndl);
+        // Matte fabric has 0 specular; metal hardware has crisp metallic glint; leather boots retain delicate satin sheen!
         float isBoot = isBlack * (1.0 - smoothstep(2.8, 4.2, vWorldPos.y));
-        float specPow = mix(22.0, 36.0, metallic);
-        float specAmp = max(metallic * 0.52, isBoot * 0.26);
+        float specPow = mix(20.0, 34.0, metallic);
+        float specAmp = max(metallic * 0.44, isBoot * 0.22);
         float gloss = pow(ndh, specPow) * specAmp * cel;
 
-        vec3 celTint = mix(vec3(0.68, 0.73, 0.82), vec3(1.10, 1.10, 1.09), cel * 0.72 + softWrap * 0.28);
-        // Slightly stronger contrast on metallic accents
-        celTint = mix(celTint, mix(vec3(0.55, 0.58, 0.66), vec3(1.15, 1.14, 1.10), cel), metallic * 0.65);
+        vec3 celTint = mix(vec3(0.70, 0.75, 0.83), vec3(1.09, 1.09, 1.08), cel * 0.62 + softWrap * 0.38);
+        celTint = mix(celTint, mix(vec3(0.58, 0.61, 0.68), vec3(1.14, 1.13, 1.09), cel), metallic * 0.65);
 
-        float layerScale = mix(1.0, depthLight, 0.90) * innerShade * ao * upperFocus;
-        outCol = base * celTint * layerScale * depthTint + vec3(0.85, 0.88, 0.92) * gloss + vec3(0.05, 0.07, 0.08) * rim * (1.0 - rearFactor * 0.5);
+        float layerScale = mix(1.0, depthLight, 0.92) * innerShade * ao * upperFocus;
+        outCol = base * celTint * layerScale * depthTint + vec3(0.84, 0.87, 0.92) * gloss;
     }
 
     fragColor = vec4(clamp(outCol, 0.0, 1.0), alpha);
@@ -994,60 +1004,65 @@ class GLPMXRenderer:
             n_nb = n_pad[1 + dy:1 + dy + self.height, 1 + dx:1 + dx + self.width]
             a_nb = a_pad[1 + dy:1 + dy + self.height, 1 + dx:1 + dx + self.width]
 
-            # Lower threshold on hair (mat_id == 3) so bangs/buns/locks get crisp individual contours!
+            # Lower threshold on hair (mat_id == 3) for bangs/buns separation; smooth contour avoids staircases!
             is_hair = (mat_id == 3) | (m_nb == 3)
-            d_thresh = np.where(is_hair, 0.085, 0.18)
-            fg_step = np.where(g_alpha & a_nb, np.clip((d_nb - depth - d_thresh) * 0.95, 0.0, 1.0), 0.0)
-            # Crease line on sharp normal turns (hair bun silhouette, coat lapel, skirt pleats)
-            n_step = np.where(g_alpha & a_nb & (mat_id == m_nb), np.clip((np.abs(nz_val - n_nb) - 0.26) * 2.2, 0.0, 0.75), 0.0)
-            # Crisp subtle separation where hair crosses face/skin/clothes
-            mat_step = np.where(g_alpha & a_nb & is_hair & (mat_id != m_nb), 0.65, 0.0)
-            edge = np.maximum(edge, np.maximum(fg_step, np.maximum(n_step, mat_step)))
+            d_thresh = np.where(is_hair, 0.11, 0.20)
+            fg_step = np.where(g_alpha & a_nb, np.clip((d_nb - depth - d_thresh) * 0.80, 0.0, 1.0), 0.0)
+            mat_step = np.where(g_alpha & a_nb & is_hair & (mat_id != m_nb), 0.48, 0.0)
+            edge = np.maximum(edge, np.maximum(fg_step, mat_step))
 
-        # Blend subtle cool-jade ink on hair boundaries, dark ink-slate on cloth/body overlaps
+        # 3x3 gentle Gaussian smoothing on G-buffer edge so aliased gbuf pixels never introduce staircases onto 8x MSAA!
+        ep = np.pad(edge, ((1, 1), (1, 1)), mode='edge')
+        edge_smooth = (
+            ep[1:-1, 1:-1] * 0.40
+            + (ep[0:-2, 1:-1] + ep[2:, 1:-1] + ep[1:-1, 0:-2] + ep[1:-1, 2:]) * 0.10
+            + (ep[0:-2, 0:-2] + ep[0:-2, 2:] + ep[2:, 0:-2] + ep[2:, 2:]) * 0.05
+        )
         is_hair_px = (mat_id == 3)[:, :, None]
         ink_rgb = np.where(
             is_hair_px,
-            np.array([42.0, 62.0, 56.0], dtype=np.float32),
-            np.array([38.0, 46.0, 56.0], dtype=np.float32),
+            np.array([48.0, 68.0, 60.0], dtype=np.float32),
+            np.array([46.0, 54.0, 64.0], dtype=np.float32),
         )
-        ink_alpha = (edge * np.where(is_hair_px[:, :, 0], 0.56, 0.48))[:, :, None]
+        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.36, 0.32))[:, :, None]
         valid = (arr[:, :, 3:4] > 20)
         arr_f = arr[:, :, :3].astype(np.float32)
         arr_f = np.where(valid, arr_f * (1.0 - ink_alpha) + ink_rgb * ink_alpha, arr_f)
         arr[:, :, :3] = np.clip(arr_f, 0, 255).astype(np.uint8)
 
-        # Add soft elliptical ground contact shadow directly under shoes when grounded (prevents floating!)
+        # Dual tight sole-hugging contact shadows (soft grey-slate, no dark ring across empty air between shoes!)
         if abs(world_y_shift) < 0.05:
-            y0_scan = max(0, int(bottom_px) - 28)
+            y0_scan = max(0, int(bottom_px) - 24)
             y1_scan = min(self.height, int(bottom_px) + 4)
-            # Restrict scan to central body/foot columns so trailing dragon tail or sleeve tips don't skew shadow center
             mid_x = self.width // 2
-            x_l, x_r = max(0, mid_x - 280), min(self.width, mid_x + 280)
-            band = arr[y0_scan:y1_scan, x_l:x_r, 3] > 90
-            xs_contact = np.where(np.any(band, axis=0))[0] + x_l
-            if len(xs_contact) > 0:
-                cx_shadow = float((xs_contact.min() + xs_contact.max()) * 0.5)
-                span_x = max(110.0, min(260.0, float(xs_contact.max() - xs_contact.min()) * 0.65))
-                sy_c = float(bottom_px) - 2.0
-                sx0 = max(0, int(cx_shadow - span_x * 1.45))
-                sx1 = min(self.width, int(cx_shadow + span_x * 1.45))
-                sy0 = max(0, int(sy_c - 20))
-                sy1 = min(self.height, int(sy_c + 24))
-                if sx1 > sx0 and sy1 > sy0:
-                    yy, xx = np.mgrid[sy0:sy1, sx0:sx1]
-                    d2 = ((xx - cx_shadow) / span_x) ** 2 + ((yy - sy_c) / 13.0) ** 2
-                    sh_a = np.exp(-d2 * 2.2) * 0.30 + np.exp(-d2 * 6.0) * 0.16
-                    sh_a = np.where(d2 < 2.6, sh_a, 0.0).astype(np.float32)
-                    fg_r = arr[sy0:sy1, sx0:sx1, :3].astype(np.float32) / 255.0
-                    fg_a = arr[sy0:sy1, sx0:sx1, 3:4].astype(np.float32) / 255.0
-                    sh_rgb = np.array([28.0 / 255.0, 34.0 / 255.0, 40.0 / 255.0], dtype=np.float32)
-                    out_a = fg_a[:, :, 0] + sh_a * (1.0 - fg_a[:, :, 0])
-                    out_rgb = (
-                        fg_r * fg_a + sh_rgb * (sh_a[:, :, None] * (1.0 - fg_a))
-                    ) / np.maximum(out_a[:, :, None], 1e-6)
-                    arr[sy0:sy1, sx0:sx1, :3] = np.clip(out_rgb * 255.0, 0, 255).astype(np.uint8)
-                    arr[sy0:sy1, sx0:sx1, 3] = np.clip(out_a * 255.0, 0, 255).astype(np.uint8)
+            for x_lo, x_hi in ((max(0, mid_x - 260), mid_x), (mid_x, min(self.width, mid_x + 260))):
+                band = arr[y0_scan:y1_scan, x_lo:x_hi, 3] > 95
+                xs_foot = np.where(np.any(band, axis=0))[0] + x_lo
+                if len(xs_foot) < 6:
+                    continue
+                cx_f = float((xs_foot.min() + xs_foot.max()) * 0.5)
+                rx = max(46.0, min(95.0, float(xs_foot.max() - xs_foot.min()) * 0.62))
+                ry = 9.0
+                sy_c = float(bottom_px) - 1.5
+                sx0 = max(0, int(cx_f - rx * 1.65))
+                sx1 = min(self.width, int(cx_f + rx * 1.65))
+                sy0 = max(0, int(sy_c - ry * 1.8))
+                sy1 = min(self.height, int(sy_c + ry * 2.0))
+                if sx1 <= sx0 or sy1 <= sy0:
+                    continue
+                yy, xx = np.mgrid[sy0:sy1, sx0:sx1]
+                d2 = ((xx - cx_f) / rx) ** 2 + ((yy - sy_c) / ry) ** 2
+                sh_a = (np.exp(-d2 * 1.9) * 0.24 + np.exp(-d2 * 5.2) * 0.14).astype(np.float32)
+                sh_a = np.where(d2 < 2.8, sh_a, 0.0).astype(np.float32)
+                fg_r = arr[sy0:sy1, sx0:sx1, :3].astype(np.float32) / 255.0
+                fg_a = arr[sy0:sy1, sx0:sx1, 3:4].astype(np.float32) / 255.0
+                sh_rgb = np.array([62.0 / 255.0, 68.0 / 255.0, 76.0 / 255.0], dtype=np.float32)
+                out_a = fg_a[:, :, 0] + sh_a * (1.0 - fg_a[:, :, 0])
+                out_rgb = (
+                    fg_r * fg_a + sh_rgb * (sh_a[:, :, None] * (1.0 - fg_a))
+                ) / np.maximum(out_a[:, :, None], 1e-6)
+                arr[sy0:sy1, sx0:sx1, :3] = np.clip(out_rgb * 255.0, 0, 255).astype(np.uint8)
+                arr[sy0:sy1, sx0:sx1, 3] = np.clip(out_a * 255.0, 0, 255).astype(np.uint8)
 
         return Image.fromarray(arr, 'RGBA')
 
