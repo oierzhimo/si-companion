@@ -298,8 +298,8 @@ void main() {
         // so flame horns, armor plates, and cuffs show crisp deep-grey lit planes vs deep black crevices.
         float isDarkPiece = 1.0 - smoothstep(0.11, 0.24, lum);
         float inShoulderZone = smoothstep(13.5, 14.3, vWorldPos.y) * max(smoothstep(0.75, 1.35, abs(vWorldPos.x)), smoothstep(15.6, 16.2, vWorldPos.y));
-        float inWedgeBand = smoothstep(12.85, 13.35, vWorldPos.y) * (1.0 - smoothstep(15.10, 15.50, vWorldPos.y))
-                          * smoothstep(1.80, 2.15, abs(vWorldPos.x)) * (1.0 - smoothstep(0.65, 0.95, vWorldPos.z));
+        float inWedgeBand = smoothstep(12.85, 13.30, vWorldPos.y) * (1.0 - smoothstep(15.40, 15.75, vWorldPos.y))
+                          * smoothstep(1.18, 1.38, abs(vWorldPos.x)) * (1.0 - smoothstep(0.90, 1.20, vWorldPos.z));
         // Diagonal collar-to-chest halter straps & center buckle strap flanking bare shoulders (y in 14.7..17.15, |x| < 1.65):
         // soften harsh near-black straps & inner edge pixels into coordinated dark-slate grey (no harsh black lines against skin)
         float inHalterStrap = smoothstep(14.70, 15.05, vWorldPos.y) * (1.0 - smoothstep(16.75, 17.15, vWorldPos.y))
@@ -320,7 +320,7 @@ void main() {
         vec3 darkShoulder = mix(shoulderShadow, shoulderLit, facingShoulder);
 
         // Elevate the thick dark wedge/band right above the blue sleeves & collar halter straps into coordinated dark slate grey
-        vec3 wedgeSlateBase = clamp(raw * 1.45 + vec3(0.115, 0.120, 0.130), 0.0, 0.50);
+        vec3 wedgeSlateBase = clamp(raw * 1.40 + vec3(0.165, 0.172, 0.184), 0.0, 0.54);
         vec3 halterSlateBase = clamp(raw * 1.55 + vec3(0.145, 0.150, 0.162), 0.0, 0.52);
         darkShoulder = mix(darkShoulder, mix(wedgeSlateBase, halterSlateBase, inHalterStrap), isDarkWedge);
 
@@ -336,13 +336,13 @@ void main() {
         float darkCreviceOther = mix(0.54, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.84, collarSeam);
         float tightCrevice = smoothstep(0.05, 0.28, clamp(bakedAO, 0.0, 1.0));
         float darkCreviceShoulder = mix(0.38, 1.0, tightCrevice) * mix(1.0, 0.80, collarSeam * 0.75);
-        float tightWedgeSeam = smoothstep(0.02, 0.16, clamp(bakedAO, 0.0, 1.0));
-        float darkCreviceWedge = mix(mix(0.44, 0.68, inHalterStrap), 1.0, tightWedgeSeam);
+        float tightWedgeSeam = smoothstep(0.01, 0.08, clamp(bakedAO, 0.0, 1.0));
+        float darkCreviceWedge = mix(mix(0.62, 0.70, inHalterStrap), 1.0, tightWedgeSeam);
         darkCreviceShoulder = mix(darkCreviceShoulder, darkCreviceWedge, isDarkWedge);
         float darkCreviceAO = mix(darkCreviceOther, darkCreviceShoulder, isDarkUpperOrWedge);
         float finalAO = mix(clothSeamAO, darkCreviceAO, darkBlend);
         float darkInnerOther = mix(innerShade, isBackSide ? 0.74 : 1.0, isDarkPiece);
-        float darkInnerShoulder = mix(trueBack ? 0.65 : 1.0, trueBack ? 0.84 : 1.0, isDarkWedge);
+        float darkInnerShoulder = mix(trueBack ? 0.65 : 1.0, trueBack ? 0.88 : 1.0, isDarkWedge);
         float darkInner = mix(darkInnerOther, darkInnerShoulder, isDarkUpperOrWedge);
 
         // Fix inverted CW winding & restore broad major-fold volume on grey dress & long side capes:
@@ -361,10 +361,10 @@ void main() {
 
         vec3 envOther = mix(vec3(0.76, 0.77, 0.79), vec3(1.05, 1.05, 1.05), volumeRamp);
         vec3 envShoulder = mix(vec3(0.72, 0.74, 0.78), vec3(1.04, 1.04, 1.04), smoothstep(0.05, 0.75, ndl_shoulder));
-        vec3 envWedge = mix(vec3(0.74, 0.76, 0.80), vec3(1.00, 1.00, 1.00), smoothstep(-0.15, 0.75, ndl_shoulder));
+        vec3 envWedge = mix(vec3(0.78, 0.80, 0.84), vec3(1.02, 1.02, 1.02), smoothstep(-0.20, 0.72, ndl_shoulder));
         envShoulder = mix(envShoulder, envWedge, isDarkWedge);
         vec3 lightEnv = mix(envOther, envShoulder, isDarkUpperOrWedge);
-        float wedgeDepth = mix(depthAtten, mix(depthAtten, 1.0, 0.65), isDarkWedge);
+        float wedgeDepth = mix(depthAtten, mix(depthAtten, 1.0, 0.78), isDarkWedge);
         vec3 stdCol = base * lightEnv * finalAO * darkInner * wedgeDepth;
         outCol = mix(stdCol, dressCapeCol, inDressOrCape);
     }
