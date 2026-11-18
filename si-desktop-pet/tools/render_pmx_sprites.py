@@ -186,6 +186,24 @@ void main() {
         N = perturb_normal(N_geom, vWorldPos, vUV, vec3(nx, ny, nz), nStrength);
     }
 
+    // Note: PMX uses CW front-facing winding in screen space, so OpenGL's default gl_FrontFacing (CCW)
+    // is false on front faces and true on back faces. Use trueFrontN for face & shoulder dark armor lighting
+    // while keeping existing behavior on other untouched body/dress/hair/leg regions.
+    vec3 N_raw = normalize(vNormal);
+    bool trueBack = gl_FrontFacing;
+    vec3 N_trueFront = trueBack ? -N_raw : N_raw;
+    vec3 N_shoulder = N_trueFront;
+    vec3 N_clothTrue = N_trueFront;
+    if (uHasNorm == 1) {
+        vec3 nSamp = texture(uNormTex, vUV).rgb;
+        float nx = nSamp.r * 2.0 - 1.0;
+        float ny = nSamp.g * 2.0 - 1.0;
+        float nz = (nSamp.b < 0.05) ? sqrt(max(0.0, 1.0 - nx * nx - ny * ny)) : (nSamp.b * 2.0 - 1.0);
+        N_shoulder = perturb_normal(N_trueFront, vWorldPos, vUV, vec3(nx, ny, nz), 0.48);
+        // Gentle normal perturbation on dress/cape so major folds guide shading without fragmenting prints
+        N_clothTrue = perturb_normal(N_trueFront, vWorldPos, vUV, vec3(nx, ny, nz), 0.22);
+    }
+
     vec4 packSamp = (uHasPack == 1) ? texture(uPackTex, vUV) : vec4(0.0, 0.0, 1.0, 0.5);
     float bakedAO = (uHasPack == 1) ? packSamp.b : 1.0;
 
@@ -194,10 +212,23 @@ void main() {
     vec3 N_lit = normalize(mix(N_geom, N, (uMatKind == 0) ? 0.0 : 0.36));
     float ndl = dot(N_lit, L);
     float ndl_dark = dot(normalize(mix(N_geom, N, 0.58)), L);
+    float ndl_skin = dot(N_trueFront, L);
+    float ndl_shoulder = dot(normalize(mix(N_trueFront, N_shoulder, 0.62)), L);
+    float ndl_cloth = dot(normalize(mix(N_trueFront, N_clothTrue, 0.28)), L);
 
     // Clear yet soft 3-band volume transition (lit -> transition -> shadow)
     float volumeRamp = smoothstep(-0.20, 0.34, ndl);
-    float skinRamp = smoothstep(-0.22, 0.44, ndl);
+    float skinRamp = smoothstep(-0.25, 0.78, ndl_skin);
+    // Stylized smooth anime head normal: preserves gentle side-cheek wrap while eliminating downward micro-polygon
+    // shadows around nose wings, mouth corners, and lower lip (keeps painted 2D nose/lip structure crisp)
+    vec3 headApprox = normalize(vec3(N_trueFront.x * 0.85, 0.24, min(N_trueFront.z, -0.35)));
+    vec3 N_faceClean = normalize(mix(headApprox, vec3(N_trueFront.x, max(N_trueFront.y, 0.08), N_trueFront.z), 0.16));
+    float ndl_faceSmooth = dot(N_faceClean, L);
+    float faceRamp = smoothstep(-0.25, 0.78, ndl_faceSmooth);
+    vec3 sharedSkinShadow = vec3(0.79, 0.735, 0.73);
+    vec3 sharedSkinLit = vec3(0.99, 0.98, 0.975);
+    vec3 sharedSkinEnv = mix(sharedSkinShadow, sharedSkinLit, skinRamp);
+    vec3 faceSkinEnv = mix(sharedSkinShadow, sharedSkinLit, faceRamp);
 
     // Subtle layer separation & inner cloth lining step
     float relZ = vViewPos.z - uPivotZ;
@@ -205,48 +236,51 @@ void main() {
     float depthAtten = mix(1.0, 0.85, rearFactor);
     float innerShade = isBackSide ? 0.84 : 1.0;
 
-    // Minimal soft contact shadows strictly inside tight crevices (under bangs, under chin, collar seam, skirt hem)
+    // Minimal soft contact shadows strictly inside tight crevices (under bangs, on neck under chin, collar seam, skirt hem)
+    // Note: chin bottom is at y=17.86 while lower lip is y=18.0..18.2; keep underChin strictly below chin tip (17.2..17.85)!
     float underBangs = smoothstep(18.88, 19.35, vWorldPos.y) * smoothstep(-0.35, -1.1, vWorldPos.z);
-    float underChin = smoothstep(17.25, 17.85, vWorldPos.y) * (1.0 - smoothstep(17.85, 18.28, vWorldPos.y));
+    float underChin = smoothstep(17.15, 17.60, vWorldPos.y) * (1.0 - smoothstep(17.65, 17.92, vWorldPos.y));
+    float underJawEdge = smoothstep(-0.30, -0.78, N_trueFront.y) * (1.0 - smoothstep(17.85, 18.02, vWorldPos.y));
     float collarSeam = smoothstep(16.15, 16.55, vWorldPos.y) * (1.0 - smoothstep(16.55, 17.00, vWorldPos.y));
     float underSkirt = smoothstep(9.8, 11.4, vWorldPos.y) * (1.0 - smoothstep(11.4, 12.0, vWorldPos.y));
 
     vec3 outCol;
     if (uMatKind == 0) {
-        // Face, eyes, brows: gently brighter natural lit face as focal point, preserving soft bangs & chin shadows
-        float isSkin = smoothstep(0.42, 0.62, lum);
-        vec3 paleFace = adjust_sat(clamp(raw * 1.18 + vec3(0.038, 0.030, 0.026), 0.0, 0.965), 0.74);
+        // Face, eyes, brows: keep exact unified warm skin tone without grey shadows around nose wings, mouth corners, or lower lip;
+        // preserve painted nose/lip structure, bangs shadow, and true jaw underside shadow cleanly
+        float isSkin = smoothstep(0.45, 0.62, lum);
+        vec3 faceSkin = adjust_sat(clamp(raw * 1.11 + vec3(0.018, 0.015, 0.016), 0.0, 0.935), 0.80);
         vec3 eyeRich = adjust_sat(raw, 1.16);
-        vec3 base = mix(eyeRich, paleFace, isSkin);
+        vec3 base = mix(eyeRich, faceSkin, isSkin);
 
-        vec3 lightEnv = mix(vec3(0.86, 0.81, 0.84), vec3(1.06, 1.045, 1.03), skinRamp);
-        lightEnv *= mix(1.0, 0.87, underBangs * isSkin) * mix(1.0, 0.89, underChin * isSkin);
-        outCol = mix(base, base * lightEnv, isSkin * 0.95);
+        vec3 lightEnv = faceSkinEnv;
+        lightEnv *= mix(1.0, 0.85, underBangs * isSkin) * mix(1.0, 0.88, underJawEdge * isSkin);
+        outCol = mix(base, base * lightEnv, isSkin * 0.96);
     } else if (uMatKind == 1) {
-        // Body (Mat[7]): keep legs smooth & unchanged (NO white glare strips) + restore moderate blue sleeve color
+        // Body (Mat[7]): keep legs/shoulders/neck skin tone & leg shading identical, restore clear cerulean-cobalt blue sleeves
         float isWarmSkin = smoothstep(-0.02, 0.06, raw.r - raw.b) * smoothstep(0.35, 0.55, lum);
-        vec3 naturalSkin = adjust_sat(clamp(raw * 1.14 + vec3(0.022, 0.018, 0.018), 0.0, 0.935), 0.66);
-        vec3 cobaltSleeve = adjust_sat(clamp(raw * vec3(0.91, 1.03, 1.16), 0.0, 1.0), 1.20);
+        vec3 naturalSkin = adjust_sat(clamp(raw * 1.06 + vec3(0.010, 0.006, 0.008), 0.0, 0.930), 0.90);
+        vec3 cobaltSleeve = adjust_sat(clamp(raw * vec3(0.86, 1.02, 1.19), 0.0, 1.0), 1.26);
         vec3 base = mix(cobaltSleeve, naturalSkin, isWarmSkin);
 
-        float contact = mix(1.0, 0.86, underChin * isWarmSkin)
-                      * mix(1.0, 0.91, collarSeam * isWarmSkin)
-                      * mix(1.0, 0.85, underSkirt * isWarmSkin);
-        vec3 skinEnv = mix(vec3(0.81, 0.75, 0.80), vec3(1.00, 0.995, 0.99), skinRamp);
-        vec3 blueEnv = mix(vec3(0.73, 0.79, 0.89), vec3(1.05, 1.05, 1.05), volumeRamp);
-        outCol = base * mix(blueEnv, skinEnv, isWarmSkin) * contact * mix(1.0, depthAtten, 0.75);
+        float contact = mix(1.0, 0.82, underChin * isWarmSkin)
+                      * mix(1.0, 0.85, collarSeam * isWarmSkin)
+                      * mix(1.0, 0.82, underSkirt * isWarmSkin);
+        vec3 blueEnv = mix(vec3(0.72, 0.80, 0.93), vec3(1.04, 1.05, 1.07), volumeRamp);
+        float zAtten = mix(depthAtten, 1.0, 0.35 * isWarmSkin);
+        outCol = base * mix(blueEnv, sharedSkinEnv, isWarmSkin) * contact * mix(1.0, zAtten, 0.75);
     } else if (uMatKind == 3) {
-        // Hair: restore clear jade-green color without grey veil, keeping coherent clump shading & restrained highlight
-        vec3 greenHair = adjust_sat(clamp(raw * vec3(0.99, 1.05, 0.96) + vec3(0.015, 0.028, 0.012), 0.0, 0.96), 0.94);
+        // Hair: slight clarity restoration (remove additive grey haze, crisp natural jade green)
+        vec3 greenHair = adjust_sat(clamp(raw * vec3(0.97, 1.06, 0.94) + vec3(0.004, 0.012, 0.0), 0.0, 0.96), 1.04);
         vec3 darkHair = clamp(raw * 0.94 + vec3(0.03, 0.035, 0.035), 0.09, 1.0);
         float isDarkStreak = (1.0 - smoothstep(0.24, 0.42, lum)) * (1.0 - smoothstep(0.08, 0.20, chroma));
         vec3 base = mix(greenHair, darkHair, isDarkStreak);
 
-        vec3 lightEnv = mix(vec3(0.72, 0.79, 0.77), vec3(1.05, 1.06, 1.02), volumeRamp) * depthAtten;
+        vec3 lightEnv = mix(vec3(0.70, 0.80, 0.75), vec3(1.04, 1.06, 1.01), volumeRamp) * depthAtten;
         float softCrownBlock = smoothstep(0.45, 0.82, N_lit.y) * smoothstep(0.18, 0.62, ndl) * (1.0 - rearFactor) * (1.0 - isDarkStreak);
         outCol = base * lightEnv + vec3(0.11, 0.14, 0.11) * softCrownBlock * 0.45;
     } else if (uMatKind == 4) {
-        // Dragon tail & hardware: identifiable deep charcoal on key-facing facets, dark crevices preserved
+        // Dragon tail & hardware: keep unchanged
         float isDarkMetal = 1.0 - smoothstep(0.12, 0.26, lum);
         float facingDark = smoothstep(-0.08, 0.56, ndl_dark);
         vec3 darkShadow = max(raw * 0.84, vec3(0.045));
@@ -259,27 +293,57 @@ void main() {
         outCol = base * lightEnv * metalCrevice;
     } else {
         // Clothes, shoulder armor, cuffs, boots (Mat 8/9/10):
-        // Black shoulder ornaments: key-facing facets show crisp dark-charcoal hierarchy while crevices stay deep black (no grey wash, no rim lines)
-        // Grey cloth stays clean neutral without veil, keeping major fold volume & original prints untouched
+        // Keep dress/cape/boots unchanged; on shoulder dark ornaments (y >= 13.5, |x| > 0.75 or collar y >= 15.8),
+        // use true front-facing normal N_trueFront (fixing CW winding inversion!) and tight-crevice-only AO (bakedAO < 0.28)
+        // so flame horns, armor plates, and cuffs show crisp deep-grey lit planes vs deep black crevices.
         float isDarkPiece = 1.0 - smoothstep(0.11, 0.24, lum);
-        float facingDark = smoothstep(-0.08, 0.56, ndl_dark);
-        float isShoulderArea = smoothstep(12.5, 14.2, vWorldPos.y);
-        vec3 darkShadow = max(raw * 0.84, vec3(0.045));
-        vec3 darkLit = mix(clamp(raw * 1.48 + vec3(0.085), 0.0, 0.26), clamp(raw * 1.75 + vec3(0.115), 0.0, 0.34), isShoulderArea);
-        vec3 darkArmor = mix(darkShadow, darkLit, facingDark);
+        float inShoulderZone = smoothstep(13.5, 14.3, vWorldPos.y) * max(smoothstep(0.75, 1.35, abs(vWorldPos.x)), smoothstep(15.6, 16.2, vWorldPos.y));
+        float isDarkShoulder = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * inShoulderZone;
 
-        vec3 base = mix(raw, darkArmor, isDarkPiece);
+        float facingDarkOther = smoothstep(-0.08, 0.56, ndl_dark);
+        vec3 darkShadowOther = max(raw * 0.84, vec3(0.045));
+        vec3 darkLitOther = clamp(raw * 1.48 + vec3(0.085), 0.0, 0.26);
+        vec3 darkOther = mix(darkShadowOther, darkLitOther, facingDarkOther);
+
+        float facingShoulder = smoothstep(0.28, 0.90, ndl_shoulder);
+        vec3 shoulderShadow = max(raw * 0.44, vec3(0.020));
+        vec3 shoulderLit = min(raw * 0.96 + vec3(0.028), vec3(0.27));
+        vec3 darkShoulder = mix(shoulderShadow, shoulderLit, facingShoulder);
+
+        float darkBlend = max(isDarkPiece, isDarkShoulder);
+        vec3 base = mix(raw, mix(darkOther, darkShoulder, isDarkShoulder), darkBlend);
         float isLightCloth = smoothstep(0.55, 0.72, lum) * (1.0 - smoothstep(0.10, 0.22, chroma));
-        vec3 softCloth = adjust_sat(clamp(raw * 1.08 + vec3(0.022), 0.0, 0.95), 0.16);
+        // Remove additive lift (+0.022) so light-grey dress keeps crisp neutral grey & original patterns without milky haze
+        vec3 softCloth = adjust_sat(clamp(raw * 1.09, 0.0, 0.95), 0.12);
         base = mix(base, softCloth, isLightCloth);
-        base = mix(base, adjust_sat(base, 1.18), smoothstep(0.14, 0.28, chroma) * (1.0 - isDarkPiece));
+        base = mix(base, adjust_sat(base, 1.18), smoothstep(0.14, 0.28, chroma) * (1.0 - darkBlend));
 
         float clothSeamAO = mix(0.94, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.92, collarSeam * 0.5);
-        float darkCreviceAO = mix(0.54, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.84, collarSeam);
-        float finalAO = mix(clothSeamAO, darkCreviceAO, isDarkPiece);
-        float darkInner = mix(innerShade, isBackSide ? 0.74 : 1.0, isDarkPiece);
-        vec3 lightEnv = mix(vec3(0.75, 0.77, 0.81), vec3(1.05, 1.05, 1.05), volumeRamp);
-        outCol = base * lightEnv * finalAO * darkInner * depthAtten;
+        float darkCreviceOther = mix(0.54, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.84, collarSeam);
+        float tightCrevice = smoothstep(0.05, 0.28, clamp(bakedAO, 0.0, 1.0));
+        float darkCreviceShoulder = mix(0.38, 1.0, tightCrevice) * mix(1.0, 0.80, collarSeam * 0.75);
+        float darkCreviceAO = mix(darkCreviceOther, darkCreviceShoulder, isDarkShoulder);
+        float finalAO = mix(clothSeamAO, darkCreviceAO, darkBlend);
+        float darkInnerOther = mix(innerShade, isBackSide ? 0.74 : 1.0, isDarkPiece);
+        float darkInnerShoulder = trueBack ? 0.65 : 1.0;
+        float darkInner = mix(darkInnerOther, darkInnerShoulder, isDarkShoulder);
+
+        // Fix inverted CW winding & wrong backface darkening on grey dress & long side capes (keep socks, dark trim, and shoulder armor unchanged!)
+        float inDressOrCape = (1.0 - darkBlend) * max(smoothstep(7.5, 8.5, vWorldPos.y), smoothstep(1.75, 2.25, abs(vWorldPos.x)));
+        float clothRamp = smoothstep(-0.22, 0.72, ndl_cloth);
+        vec3 baseClothClean = mix(raw, adjust_sat(raw, 0.14), isLightCloth);
+        baseClothClean = mix(baseClothClean, adjust_sat(baseClothClean, 1.15), smoothstep(0.14, 0.28, chroma));
+        vec3 envDressCape = mix(vec3(0.71, 0.725, 0.755), vec3(0.925, 0.93, 0.935), clothRamp);
+        float cleanSeamAO = mix(0.96, 1.0, clamp(bakedAO, 0.0, 1.0)) * mix(1.0, 0.92, collarSeam * 0.5);
+        float cleanInner = trueBack ? 0.85 : 1.0;
+        float cleanDepth = mix(1.0, 0.90, rearFactor);
+        vec3 dressCapeCol = baseClothClean * envDressCape * cleanSeamAO * cleanInner * cleanDepth;
+
+        vec3 envOther = mix(vec3(0.76, 0.77, 0.79), vec3(1.05, 1.05, 1.05), volumeRamp);
+        vec3 envShoulder = mix(vec3(0.72, 0.74, 0.78), vec3(1.04, 1.04, 1.04), smoothstep(0.05, 0.75, ndl_shoulder));
+        vec3 lightEnv = mix(envOther, envShoulder, isDarkShoulder);
+        vec3 stdCol = base * lightEnv * finalAO * darkInner * depthAtten;
+        outCol = mix(stdCol, dressCapeCol, inDressOrCape);
     }
 
     fragColor = vec4(clamp(outCol, 0.0, 1.0), alpha);
