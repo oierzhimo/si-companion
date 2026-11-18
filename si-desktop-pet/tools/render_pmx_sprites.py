@@ -300,8 +300,13 @@ void main() {
         float inShoulderZone = smoothstep(13.5, 14.3, vWorldPos.y) * max(smoothstep(0.75, 1.35, abs(vWorldPos.x)), smoothstep(15.6, 16.2, vWorldPos.y));
         float inWedgeBand = smoothstep(12.85, 13.35, vWorldPos.y) * (1.0 - smoothstep(15.10, 15.50, vWorldPos.y))
                           * smoothstep(1.80, 2.15, abs(vWorldPos.x)) * (1.0 - smoothstep(0.65, 0.95, vWorldPos.z));
+        // Diagonal collar-to-chest halter straps & center buckle strap flanking bare shoulders (y in 14.7..17.15, |x| < 1.65):
+        // soften harsh near-black straps & inner edge pixels into coordinated dark-slate grey (no harsh black lines against skin)
+        float inHalterStrap = smoothstep(14.70, 15.05, vWorldPos.y) * (1.0 - smoothstep(16.75, 17.15, vWorldPos.y))
+                            * (1.0 - smoothstep(1.38, 1.68, abs(vWorldPos.x)));
+        float isSoftSlateTrim = max(inWedgeBand, inHalterStrap);
         float isDarkShoulder = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * inShoulderZone;
-        float isDarkWedge = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * inWedgeBand;
+        float isDarkWedge = (1.0 - smoothstep(0.36, 0.44, lum)) * (1.0 - smoothstep(0.08, 0.16, chroma)) * isSoftSlateTrim;
         float isDarkUpperOrWedge = max(isDarkShoulder, isDarkWedge);
 
         float facingDarkOther = smoothstep(-0.08, 0.56, ndl_dark);
@@ -314,11 +319,10 @@ void main() {
         vec3 shoulderLit = min(raw * 0.96 + vec3(0.028), vec3(0.27));
         vec3 darkShoulder = mix(shoulderShadow, shoulderLit, facingShoulder);
 
-        // Elevate the thick dark wedge/band right above the blue sleeves (y in 12.85..15.50, |x| > 1.80, front z < 1.2)
-        // into a coordinated medium-dark slate grey with clear surface hierarchy, reducing harsh contrast against blue sleeves
-        // while keeping narrow deep-dark shadow strictly inside tight seams
+        // Elevate the thick dark wedge/band right above the blue sleeves & collar halter straps into coordinated dark slate grey
         vec3 wedgeSlateBase = clamp(raw * 1.45 + vec3(0.115, 0.120, 0.130), 0.0, 0.50);
-        darkShoulder = mix(darkShoulder, wedgeSlateBase, isDarkWedge);
+        vec3 halterSlateBase = clamp(raw * 1.55 + vec3(0.145, 0.150, 0.162), 0.0, 0.52);
+        darkShoulder = mix(darkShoulder, mix(wedgeSlateBase, halterSlateBase, inHalterStrap), isDarkWedge);
 
         float darkBlend = max(isDarkPiece, isDarkUpperOrWedge);
         vec3 base = mix(raw, mix(darkOther, darkShoulder, isDarkUpperOrWedge), darkBlend);
@@ -333,7 +337,7 @@ void main() {
         float tightCrevice = smoothstep(0.05, 0.28, clamp(bakedAO, 0.0, 1.0));
         float darkCreviceShoulder = mix(0.38, 1.0, tightCrevice) * mix(1.0, 0.80, collarSeam * 0.75);
         float tightWedgeSeam = smoothstep(0.02, 0.16, clamp(bakedAO, 0.0, 1.0));
-        float darkCreviceWedge = mix(0.44, 1.0, tightWedgeSeam);
+        float darkCreviceWedge = mix(mix(0.44, 0.68, inHalterStrap), 1.0, tightWedgeSeam);
         darkCreviceShoulder = mix(darkCreviceShoulder, darkCreviceWedge, isDarkWedge);
         float darkCreviceAO = mix(darkCreviceOther, darkCreviceShoulder, isDarkUpperOrWedge);
         float finalAO = mix(clothSeamAO, darkCreviceAO, darkBlend);
@@ -1080,7 +1084,7 @@ class GLPMXRenderer:
             np.array([48.0, 68.0, 60.0], dtype=np.float32),
             np.array([46.0, 54.0, 64.0], dtype=np.float32),
         )
-        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.18, 0.06))[:, :, None]
+        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.18, 0.0))[:, :, None]
         valid = (arr[:, :, 3:4] > 20)
         arr_f = arr[:, :, :3].astype(np.float32)
         arr_f = np.where(valid, arr_f * (1.0 - ink_alpha) + ink_rgb * ink_alpha, arr_f)
