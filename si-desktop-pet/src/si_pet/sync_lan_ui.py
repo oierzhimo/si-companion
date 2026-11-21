@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLab
 
 from .sync_transport import (PeerRegistry,LanServer,TransportError,local_address,
                              pair,exchange,write_json,parse_invitation)
+from .theme import bind_theme,dialog_stylesheet
 
 
 class LanSync(QObject):
@@ -197,6 +198,7 @@ class LanSyncDialog(QDialog):
         self.manager=manager
         self.setWindowTitle('祀 · 设备配对与同步')
         self.resize(700,730)
+        bind_theme(self,lambda:self.setStyleSheet(dialog_stylesheet()))
         layout=QVBoxLayout(self)
         info=QLabel('把相伴记录带到另一台电脑。两台电脑需在同一局域网；只合并互动与手记。')
         info.setWordWrap(True);layout.addWidget(info)

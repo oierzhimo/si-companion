@@ -2,18 +2,13 @@ param(
     [string]$JavaDirectory='E:\create\focusguard\tools\jdk\jdk-17.0.20.1+1',
     [string]$BuildToolsDirectory='E:\create\focusguard\tools\build-tools-35.0.0\android-15',
     [string]$AndroidJar='E:\create\focusguard\tools\platforms-android-35\android-35-ext15\android.jar',
-    [Parameter(Mandatory=$true)][string]$SigningKey,
-    [string]$SigningAlias='si-preview',
+    [string]$SigningKey='F:\si_accompany\android-signing\si-local-preview.jks',
     [ValidatePattern('^[A-Za-z0-9.-]+$')][string]$VersionName='0.1.3-preview',
     [ValidateRange(1,2147483647)][int]$VersionCode=1007,
     [switch]$Force
 )
 $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
-if(-not (Test-Path -LiteralPath $SigningKey -PathType Leaf)) { throw "Signing key not found: $SigningKey" }
-if(-not $env:SI_ANDROID_KEYSTORE_PASSWORD -or -not $env:SI_ANDROID_KEY_PASSWORD) {
-    throw 'Set SI_ANDROID_KEYSTORE_PASSWORD and SI_ANDROID_KEY_PASSWORD in the local shell.'
-}
 if($VersionName -eq '.' -or $VersionName -eq '..') { throw "Invalid version name: $VersionName" }
 function Run-Tool($Executable,$Arguments) {
     & $Executable @Arguments
@@ -38,7 +33,10 @@ Run-Tool "$JavaDirectory\bin\jar.exe" @('--update','--file',"$build\unsigned.apk
 $normalized=Join-Path $build "normalized.apk"
 Run-Tool "$JavaDirectory\bin\java.exe" @("$project\tools\NormalizeApkPaths.java","$build\unsigned.apk",$normalized)
 Run-Tool "$BuildToolsDirectory\zipalign.exe" @('-f','4',$normalized,"$build\aligned.apk")
-Run-Tool "$JavaDirectory\bin\java.exe" @('-jar',"$BuildToolsDirectory\lib\apksigner.jar",'sign','--ks',$SigningKey,'--ks-key-alias',$SigningAlias,'--ks-pass','env:SI_ANDROID_KEYSTORE_PASSWORD','--key-pass','env:SI_ANDROID_KEY_PASSWORD','--out',$apk,"$build\aligned.apk")
+if(-not (Test-Path -LiteralPath $SigningKey)) {
+    throw "Signing key not found: $SigningKey. Reuse the existing Android preview key so upgrades keep the same signing identity."
+}
+Run-Tool "$JavaDirectory\bin\java.exe" @('-jar',"$BuildToolsDirectory\lib\apksigner.jar",'sign','--ks',$SigningKey,'--ks-key-alias','si-preview','--ks-pass','pass:android','--key-pass','pass:android','--out',$apk,"$build\aligned.apk")
 Run-Tool "$JavaDirectory\bin\java.exe" @('-jar',"$BuildToolsDirectory\lib\apksigner.jar",'verify','--verbose',$apk)
 Run-Tool "$BuildToolsDirectory\aapt2.exe" @('dump','badging',$apk)
 Get-FileHash -LiteralPath $apk -Algorithm SHA256 | Format-List

@@ -27,9 +27,12 @@ class ModelRouterTests(unittest.TestCase):
                          [{'role':'user','content':'[QQ系统表情：微笑]'}],
                          [{'role':'user','content':'[附件无法读取]'}]):
             route=r.select_route(config,'local',URL,'old',messages)
-            self.assertEqual(route.model,config.text_model);self.assertEqual(route.reasoning_effort,'none')
+            self.assertEqual(route.model,config.text_model);self.assertIsNone(route.reasoning_effort)
         vision=r.select_route(config,'local',URL,'old',IMAGE)
-        self.assertEqual(vision.model,config.vision_model);self.assertEqual(vision.reasoning_effort,'none')
+        self.assertEqual(vision.model,config.vision_model);self.assertIsNone(vision.reasoning_effort)
+        q35=r.RouterConfig(True,text_model='si-qwen3.5:9b',vision_model='si-qwen3.5:9b')
+        self.assertEqual(r.select_route(q35,'local',URL,'old',TEXT).reasoning_effort,'none')
+        self.assertEqual(r.select_route(q35,'local',URL,'old',IMAGE).reasoning_effort,'none')
         legacy=r.select_route(r.RouterConfig(True,vision_model='si-qwen2.5vl:7b'),'local',URL,'old',IMAGE)
         self.assertIsNone(legacy.reasoning_effort)
 
@@ -83,7 +86,7 @@ class ModelRouterTests(unittest.TestCase):
         def unavailable(endpoint,model,messages,key):calls.append(model);raise mc.ModelConnectionError('not installed')
         c=self.connection(unavailable);c.configure_router(r.RouterConfig(True))
         with self.assertRaises(mc.ModelConnectionError):c('','',TEXT,'')
-        self.assertEqual(calls,['si-qwen3.5:9b'])
+        self.assertEqual(calls,['si-qwen2.5-3b-lang-lora:latest'])
 
     def test_router_never_rewrites_member_as_admin(self):
         messages=[{'role':'system','content':GROUP_SYSTEM_MEMBER},{'role':'user','content':'写三句问候'}]

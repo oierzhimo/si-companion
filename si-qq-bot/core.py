@@ -213,6 +213,8 @@ class CoreReply:
     kind: str
     delivery_token: str | None = None
     segment: dict | None = None
+    extra_segments: tuple = ()
+    bubbles: tuple = ()
 
 
 def _valid_utf8(value: str) -> bool:
@@ -786,6 +788,8 @@ class QQCore:
                 return self._mode_command(message_id, command_mode)
             if stripped.startswith(_REPLY_MODE_PREFIXES):
                 return None
+            if stripped in ('/新对话', '/清空上下文'):
+                return self._clear_turns_command(message_id)
 
             return self._chat(message_id, stripped)
 
@@ -924,6 +928,83 @@ class QQCore:
             self._pending_recovery_required = False
             return True
 
+    def administrator_id(self):
+        with self._lock:
+            return self._admin_openid
+
+    def clear_turns(self):
+        """Clear saved private conversation turns while preserving binding."""
+        with self._lock:
+            if self._pending is not None or self._pending_recovery_required:
+                return False
+            try:
+                self._commit(self._admin_openid, [], self._processed, None)
+            except Exception:
+                return False
+            return True
+
+    def _clear_turns_command(self, message_id):
+        processed = self._append_processed(message_id)
+        try:
+            self._commit(self._admin_openid, [], processed, None)
+        except Exception:
+            return CoreReply('当前未能清空上下文，请稍后再试。', 'mode')
+        return CoreReply('好，之前的话先翻篇，咱们从头接着聊。', 'mode')
+
+    def proactive_private(self, reason='idle'):
+        """Generate one proactive message from Si to the bound administrator."""
+        with self._lock:
+            if (self._admin_openid is None
+                    or self._pending is not None
+                    or self._pending_recovery_required):
+                return None
+            admin_openid = self._admin_openid
+            turns_snapshot = [dict(t) for t in self._turns]
+            profile_snapshot = self._profile_snapshot()
+        trigger_text = (
+            '[主动搭话] 现在由你主动给管理员发一句消息开启或延续聊天。'
+            '结合当前时间与刚才聊过的内容自然开口（如果暂无先前对话，就随性问候或分享一点小事），'
+            '1到2句简短口语即可（可用 || 分成两段，也可酌情带一个 [表情:开心] 或 [表情:困了]），不要像客服。'
+        )
+        try:
+            messages = self._conversation.Conversation.messages(
+                _ConversationView(turns_snapshot, profile_snapshot), trigger_text
+            )
+            api_key = getattr(self._conversation, 'GENAI_DEFAULT_API_KEY')
+            requester = self._request_reply or self._conversation.request_reply
+            from service_reply import respond
+            raw_reply = respond(requester, (_ENDPOINT, _MODEL, messages, api_key), trigger_text, self.data_dir, private=True)
+        except Exception:
+            return None
+        reply = _clean_reply(raw_reply)
+        if reply is None:
+            return None
+        token = secrets.token_urlsafe(32)
+        pending = {
+            'token_hash': _token_hash(token),
+            'sender_openid': admin_openid,
+            'message_id': 'proactive-' + token[:16],
+            'user': '[主动开启对话]',
+            'assistant': reply,
+            'created_at': self._now(),
+        }
+        with self._lock:
+            if self._pending is not None or self._admin_openid != admin_openid:
+                return None
+            try:
+                self._commit(admin_openid, self._turns, self._processed, pending)
+            except Exception:
+                return None
+            self._pending_recovery_required = False
+        return CoreReply(
+            reply,
+            'chat',
+            token,
+            getattr(raw_reply, 'segment', None),
+            getattr(raw_reply, 'extra_segments', ()),
+            getattr(raw_reply, 'bubbles', ()),
+        )
+
     # -- binding -------------------------------------------------------
 
     def _try_bind(self, sender_openid, message_id, text):
@@ -1046,7 +1127,14 @@ class QQCore:
             return None
         # This pending belongs to the current process, not to a restart.
         self._pending_recovery_required = False
-        return CoreReply(reply, 'chat', token, getattr(raw_reply, 'segment', None))
+        return CoreReply(
+            reply,
+            'chat',
+            token,
+            getattr(raw_reply, 'segment', None),
+            getattr(raw_reply, 'extra_segments', ()),
+            getattr(raw_reply, 'bubbles', ()),
+        )
 
     def _model_failure(self, message_id):
         # Deduplicate the failed input without adding any assistant text.

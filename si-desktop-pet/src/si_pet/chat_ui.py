@@ -7,6 +7,7 @@ thread is never blocked.
 import os
 import tempfile
 import threading
+import urllib.parse
 from pathlib import Path
 
 from PySide6.QtCore import Signal, Qt, QEvent, QBuffer, QIODevice
@@ -15,14 +16,17 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QTextEdit, QTextBrowser, QPushButton, QComboBox, QCompleter,
     QFormLayout, QApplication)
 
-from .conversation import (ConversationError, DEFAULT_GENAI_ENDPOINT,
+from .conversation import (CUSTOM_DEFAULT_ENDPOINT, ConversationError, DEEPSEEK_DEFAULT_ENDPOINT,
+    DEEPSEEK_DEFAULT_MODEL, DEFAULT_GENAI_ENDPOINT,
     DEFAULT_LOCAL_ENDPOINT, GENAI_DEFAULT_API_KEY, GENAI_DEFAULT_MODEL,
-    GENAI_NO_MATCH_MESSAGE, MODELS_EMPTY_MESSAGE, PROVIDERS,
-    fetch_models as fetch_models_request, filter_genai_models,
+    GENAI_NO_MATCH_MESSAGE, LAN_DEFAULT_ENDPOINT, MODELS_EMPTY_MESSAGE,
+    PROVIDERS, REMOTE_DEFAULT_ENDPOINT,
+    endpoint_for_provider, fetch_models as fetch_models_request, filter_genai_models,
     local_endpoint, looks_like_gpt_model, request_reply,
     resolve_genai_model, validate_model_for_send)
 from . import chat_backend
 from .chat_backend import ChatSession, ChatError
+from .theme import bind_theme, dialog_stylesheet
 
 try:
     import winsound
@@ -32,7 +36,24 @@ except ImportError:
 _MAX_IMAGES = 4
 _ALLOWED_IMAGE_EXTS = frozenset(('.jpg', '.jpeg', '.png', '.gif', '.webp'))
 DEFAULT_OLLAMA_ENDPOINT = 'http://127.0.0.1:11434/v1'
-DEFAULT_OLLAMA_MODEL = 'si-qwen3.5:9b'
+DEFAULT_OLLAMA_MODEL = 'si-qwen2.5-3b-lang-lora:latest'
+DEFAULT_OLLAMA_VISION_MODEL = 'si-qwen2.5vl-3b-lora:latest'
+
+
+def resolve_local_chat_model(provider: str, endpoint: str, model: str, has_images: bool) -> str:
+    """Route Ollama image turns (local port 11434, LAN, or remote tunnel) to the vision LoRA."""
+    if not has_images or provider not in ('local', 'lan', 'remote'):
+        return model
+    if provider != 'remote':
+        try:
+            port = urllib.parse.urlsplit(endpoint).port
+        except ValueError:
+            return model
+        if port != 11434:
+            return model
+    if model.strip().lower() in ('si-qwen2.5-3b-lang-lora:latest', 'si-qwen2.5-3b-lang-lora'):
+        return DEFAULT_OLLAMA_VISION_MODEL
+    return model
 
 
 class MultimodalDialog(QDialog):
@@ -115,13 +136,13 @@ class MultimodalDialog(QDialog):
         self.setWindowTitle('和祀聊聊 · 多模态聊聊')
         self.resize(660, 760)
         self.setAcceptDrops(True)
+        bind_theme(self, lambda: self.setStyleSheet(dialog_stylesheet()))
 
         layout = QVBoxLayout(self)
 
         hint = QLabel(
-            '支持拖入或粘贴图片（最多 4 张）。普通本机模型只连接本机。'
-            '上科大 GenAI 反代会把文字、图片与偏好经本机反代送到学校模型；'
-            '对话记录只保存在本机。'
+            '支持拖入或粘贴图片（最多 4 张）。支持本机模型（Ollama 可配视觉 LoRA）、DeepSeek 官方 API（纯文字）'
+            '及自定义模型接口（如学校 API 网关）；对话记录只保存在本机，API Key 仅留内存不写盘。'
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -129,19 +150,25 @@ class MultimodalDialog(QDialog):
         # Service configuration form
         form = QFormLayout()
         self.service = QComboBox()
-        self.service.addItem('普通本机模型', 'local')
+        self.service.addItem('本机模型（Ollama / 本地端口）', 'local')
         self.service.addItem('上科大 GenAI 反代', 'genai')
-        self.service.setCurrentIndex(1 if self.provider == 'genai' else 0)
+        self.service.addItem('DeepSeek 官方 API', 'deepseek')
+        self.service.addItem('自定义模型接口（学校 API / 第三方）', 'custom')
+        self.service.addItem('远程显卡主机（跨网 / 穿透 / 组网）', 'remote')
+        self.service.setCurrentIndex({'local': 0, 'genai': 1, 'deepseek': 2, 'custom': 3, 'remote': 4, 'lan': 4}.get(self.provider, 0))
 
         self.endpoint = QLineEdit(self.session.endpoint)
 
         self.api_key = QLineEdit()
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText('普通本机可留空；只保留在内存')
+        self.api_key.setPlaceholderText(
+            '请填写 DeepSeek API Key（sk-...）；只保留在内存' if self.provider == 'deepseek'
+            else '普通本机可留空；只保留在内存'
+        )
         self.api_key.setText(GENAI_DEFAULT_API_KEY if self.provider == 'genai' else '')
 
         self.model = QLineEdit(self.session.model)
-        self.model.setPlaceholderText('服务中已加载的模型名称；不要猜测')
+        self.model.setPlaceholderText('模型名称；如 deepseek-chat 或本机已加载模型')
         self.model_completer = QCompleter([], self.model)
         self.model.setCompleter(self.model_completer)
 
@@ -157,12 +184,15 @@ class MultimodalDialog(QDialog):
         )
         self.profile.setPlainText(self.session.profile)
 
-        form.addRow('服务预设', self.service)
-        form.addRow('本机接口', self.endpoint)
-        form.addRow('反代访问口令', self.api_key)
+        self.endpoint_label = QLabel('接口地址')
+        self.api_key_label = QLabel('API Key / 口令')
+        form.addRow('连接方式', self.service)
+        form.addRow(self.endpoint_label, self.endpoint)
+        form.addRow(self.api_key_label, self.api_key)
         form.addRow('模型', model_row)
         form.addRow('管理员偏好', self.profile)
         layout.addLayout(form)
+        self._update_provider_labels(self.provider)
 
         # Transcript display area
         self.transcript = QTextBrowser()
@@ -428,6 +458,33 @@ class MultimodalDialog(QDialog):
         except (RuntimeError, TypeError):
             pass
 
+    def _update_provider_labels(self, provider):
+        if provider == 'deepseek':
+            self.endpoint_label.setText('DeepSeek 接口')
+            self.endpoint.setPlaceholderText('https://api.deepseek.com/v1')
+            self.api_key_label.setText('DeepSeek API Key')
+            self.api_key.setPlaceholderText('必填：DeepSeek API Key（sk-...），仅保留在内存')
+        elif provider == 'custom':
+            self.endpoint_label.setText('自定义接口地址')
+            self.endpoint.setPlaceholderText('填写学校或第三方 OpenAI 兼容地址，如 https://.../v1')
+            self.api_key_label.setText('API Key / 访问口令')
+            self.api_key.setPlaceholderText('填写学校平台提供的 API Key / 口令（仅留内存；无需可留空）')
+        elif provider in ('lan', 'remote'):
+            self.endpoint_label.setText('远程主机地址')
+            self.endpoint.setPlaceholderText('例如 https://xxx.trycloudflare.com/v1')
+            self.api_key_label.setText('访问口令 / Key')
+            self.api_key.setPlaceholderText('无鉴权可留空；若挂了反向代理鉴权请填写，仅留内存')
+        elif provider == 'genai':
+            self.endpoint_label.setText('本机接口')
+            self.endpoint.setPlaceholderText('http://127.0.0.1:8000/v1')
+            self.api_key_label.setText('反代访问口令')
+            self.api_key.setPlaceholderText('默认 sk-shanghaitech-genai；只保留在内存')
+        else:
+            self.endpoint_label.setText('本机接口')
+            self.endpoint.setPlaceholderText('http://127.0.0.1:11434/v1 或 http://127.0.0.1:1234/v1')
+            self.api_key_label.setText('访问口令 / Key')
+            self.api_key.setPlaceholderText('普通本机可留空；只保留在内存')
+
     def preset_changed(self, _index):
         provider = self.current_provider()
         self.provider = provider
@@ -435,12 +492,30 @@ class MultimodalDialog(QDialog):
         self.migration_notice = ''
         pending = self.model_busy
         self.invalidate_models()
-        endpoint = DEFAULT_GENAI_ENDPOINT if provider == 'genai' else DEFAULT_OLLAMA_ENDPOINT
+        self._update_provider_labels(provider)
+        if provider == 'genai':
+            endpoint = DEFAULT_GENAI_ENDPOINT
+        elif provider == 'deepseek':
+            endpoint = DEEPSEEK_DEFAULT_ENDPOINT
+        elif provider == 'custom':
+            endpoint = CUSTOM_DEFAULT_ENDPOINT
+        elif provider == 'lan':
+            endpoint = LAN_DEFAULT_ENDPOINT
+        elif provider == 'remote':
+            endpoint = REMOTE_DEFAULT_ENDPOINT
+        else:
+            endpoint = DEFAULT_OLLAMA_ENDPOINT
         self.endpoint.setText(endpoint)
         self.api_key.setText(GENAI_DEFAULT_API_KEY if provider == 'genai' else '')
         if provider == 'genai':
             self.model.setText(GENAI_DEFAULT_MODEL)
             self.session.model = GENAI_DEFAULT_MODEL
+        elif provider == 'deepseek':
+            self.model.setText(DEEPSEEK_DEFAULT_MODEL)
+            self.session.model = DEEPSEEK_DEFAULT_MODEL
+        elif provider == 'custom':
+            self.model.clear()
+            self.session.model = ''
         else:
             self.model.setText(DEFAULT_OLLAMA_MODEL)
             self.session.model = DEFAULT_OLLAMA_MODEL
@@ -452,9 +527,25 @@ class MultimodalDialog(QDialog):
                 '已切换到上科大 GenAI 反代，默认模型为 DeepSeek-V4.1-Flash。'
                 '需要时点击“获取模型”，查看已配置的国内开源模型。'
             )
+        elif provider == 'deepseek':
+            self.status.setText(
+                '已切换到 DeepSeek 官方 API（deepseek-chat）。请填写你的 DeepSeek API Key；'
+                '仅支持纯文字（发图请切回本机或远程显卡模型）。'
+            )
+        elif provider == 'custom':
+            self.status.setText(
+                '已切换到自定义模型接口（学校 API / 第三方 OpenAI 兼容网关）。'
+                '请填写接口地址、API Key（如有）与模型名；若所填模型支持多模态，可直接发图。'
+            )
+        elif provider in ('lan', 'remote'):
+            self.status.setText(
+                '已切换到远程显卡主机（文字 si-qwen2.5-3b-lang-lora，带图自动切视觉 LoRA）。'
+                '支持不同局域网穿透 HTTPS 域名、异地组网（100.x.x.x）或跨网段地址。'
+            )
         else:
             self.status.setText(
-                '已切换到普通本机模型（默认 Ollama 11434 · si-qwen3.5:9b）。可直接发送或点击“获取模型”。'
+                '已切换到普通本机模型（默认 Ollama 11434 · 文字 si-qwen2.5-3b-lang-lora，'
+                '带图自动切换视觉 LoRA）。可直接发送或点击“获取模型”。'
             )
 
     def connection_edited(self, _text=''):
@@ -465,19 +556,21 @@ class MultimodalDialog(QDialog):
                 self.status.setText('连接设置已修改，已忽略上一次模型查询。')
 
     def fetch_models(self):
-        """Start a background query for the loopback service's model list."""
+        """Start a background query for the configured service's model list."""
         if self.model_busy:
             return
+        provider = self.current_provider()
         try:
-            endpoint = local_endpoint(self.endpoint.text())
+            endpoint = endpoint_for_provider(provider, self.endpoint.text())
             api_key = self.api_key.text()
+            if provider == 'deepseek' and not api_key.strip():
+                raise ConversationError('使用 DeepSeek 官方 API 时，请先填写你的 DeepSeek API Key（sk-...）。')
         except (ConversationError, ChatError) as exc:
             self.status.setText(str(exc))
             return
         token = self.models_generation + 1
         self.models_generation = token
         self.model_busy = True
-        provider = self.current_provider()
         self.provider = provider
         self.models_request = (provider, endpoint)
         self.available_models = []
@@ -486,11 +579,22 @@ class MultimodalDialog(QDialog):
         except (RuntimeError, TypeError):
             pass
         self.get_models.setEnabled(False)
-        self.status.setText('正在向本机服务获取模型列表；不会发送对话。')
+        self.status.setText(
+            '正在向 DeepSeek 官方接口获取模型列表；不会发送对话。'
+            if provider == 'deepseek'
+            else ('正在向自定义接口获取模型列表；不会发送对话。'
+                  if provider == 'custom'
+                  else ('正在向远程显卡主机获取模型列表；不会发送对话。'
+                        if provider in ('lan', 'remote') else '正在向本机服务获取模型列表；不会发送对话。'))
+        )
 
         def work():
             try:
-                models = fetch_models_request(endpoint, api_key)
+                models = (
+                    fetch_models_request(endpoint, api_key, provider=provider)
+                    if provider in ('deepseek', 'custom', 'lan', 'remote')
+                    else fetch_models_request(endpoint, api_key)
+                )
                 error = ''
                 if provider == 'genai':
                     models = filter_genai_models(models)
@@ -606,8 +710,12 @@ class MultimodalDialog(QDialog):
             if text.strip() and len(text) > 2000:
                 raise ConversationError('每次请输入 1 至 2000 字。')
 
-            endpoint = local_endpoint(self.endpoint.text())
             provider = self.current_provider()
+            endpoint = endpoint_for_provider(provider, self.endpoint.text())
+            if provider == 'deepseek' and images_snapshot:
+                raise ConversationError(
+                    'DeepSeek 官方 API 当前仅支持纯文字对话；请先点击“清除图片”，或切换回“本机模型”识图。'
+                )
             model = validate_model_for_send(
                 provider, self.model.text(),
                 self.available_models if provider == 'genai' else (),
@@ -618,6 +726,8 @@ class MultimodalDialog(QDialog):
             if len(profile_text) > 2000:
                 raise ConversationError('管理员偏好最多 2000 字。')
             api_key = self.api_key.text()
+            if provider == 'deepseek' and not api_key.strip():
+                raise ConversationError('使用 DeepSeek 官方 API 时，请先填写你的 DeepSeek API Key（sk-...）。')
             self.provider = provider
             self.session.provider = provider
             self.session.endpoint = endpoint
@@ -680,8 +790,15 @@ class MultimodalDialog(QDialog):
                 return
 
             # c. Request reply
+            request_model = resolve_local_chat_model(
+                provider, endpoint, model, bool(image_urls)
+            )
             try:
-                reply = request_reply(endpoint, model, messages, api_key)
+                reply = (
+                    request_reply(endpoint, request_model, messages, api_key, provider=provider)
+                    if provider in ('deepseek', 'custom', 'lan', 'remote')
+                    else request_reply(endpoint, request_model, messages, api_key)
+                )
                 error = ''
             except ConversationError as exc:
                 reply, error = '', str(exc)

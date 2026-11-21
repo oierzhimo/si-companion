@@ -45,8 +45,23 @@ def request_kind(text):
     match = re.fullmatch(r'(?:/画图\s+|(?:请)?(?:帮我|给我)?(?:生成(?:一张|个|张)?(?:图片|图像|图)|画(?:一张|张)?(?:图片|图像|图)?)[：:\s]*)(.{2,500})', text)
     if match:
         return 'generate', match.group(1)
-    match = re.fullmatch(r'(?:/表情\s*|(?:请)?(?:发|来|给我发)(?:一张|个|张)?表情包[：:\s]*)([\w\u4e00-\u9fff-]{0,24})', text)
-    return ('reaction', match.group(1) or '默认') if match else None
+    match = re.fullmatch(r'(?:/表情\s*|(?:请)?(?:发|来|给我发?)(?:一张|张|个)?(?:([\w\u4e00-\u9fff-]{1,12})的)?表情包?[：:\s]*)([\w\u4e00-\u9fff-]{0,24})', text)
+    if match:
+        picked = (match.group(2) or match.group(1) or '默认').strip()
+        return ('reaction', picked or '默认')
+    return None
+
+
+def reaction_names(directory):
+    """Return available curated reaction names from manifest.json safely."""
+    directory = Path(directory).resolve()
+    manifest = directory / 'manifest.json'
+    if not manifest.is_file() or manifest.stat().st_size > 65536:
+        return ()
+    entries = json.loads(manifest.read_text(encoding='utf-8'))
+    if not isinstance(entries, dict):
+        return ()
+    return tuple(k for k in entries if isinstance(k, str) and k.strip())
 
 
 def reaction_segment(directory, name):

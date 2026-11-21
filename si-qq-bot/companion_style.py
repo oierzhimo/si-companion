@@ -50,7 +50,7 @@ def grounded_recall_reply(messages):
     if any(re.search(evidence_pattern,text) and not unanswered.search(text) for text in previous):return None
     return '这我还真不知道。你提醒我一下？'
 
-def demonstrate(messages):
+def demonstrate(messages, *, include_demo=True):
     if not isinstance(messages,list) or not messages:return messages
     from media_support import has_pending_media
     if has_pending_media():return messages
@@ -60,17 +60,20 @@ def demonstrate(messages):
     # otherwise distract a small model from exact quantities or formal text.
     if task_request(current):
         return messages
-    # Precede actual profile/history; retain all real system scope rules.
-    index=next((i for i,m in enumerate(messages) if m.get('role')!='system'),len(messages))
-    examples=[{'role':'system','content':'下面是虚构的口吻演示，不是你和当前发言者的聊天记录，不作为个人资料、回忆或官方台词。只参考自然说话的方式，不照抄句子。'}]
-    for user,reply in SAMPLES:
-        examples.extend(({'role':'user','content':user},{'role':'assistant','content':reply}))
-    from companion_tools import _context_kind
-    if _context_kind(messages)=='group_member':
-        examples.extend(({'role':'user','content':'你认识我吗？'},
-                         {'role':'assistant','content':'还没认识呢，怎么称呼你？'}))
-    examples.append({'role':'system','content':'口吻演示到此结束。下面才是实际对话，身份与信息以实际规则和上下文为准。'})
-    result=list(messages[:index])+examples+list(messages[index:])
+    if include_demo:
+        # Precede actual profile/history; retain all real system scope rules.
+        index=next((i for i,m in enumerate(messages) if m.get('role')!='system'),len(messages))
+        examples=[{'role':'system','content':'下面是虚构的口吻演示，不是你和当前发言者的聊天记录，不作为个人资料、回忆或官方台词。只参考自然说话的方式，不照抄句子。'}]
+        for user,reply in SAMPLES:
+            examples.extend(({'role':'user','content':user},{'role':'assistant','content':reply}))
+        from companion_tools import _context_kind
+        if _context_kind(messages)=='group_member':
+            examples.extend(({'role':'user','content':'你认识我吗？'},
+                             {'role':'assistant','content':'还没认识呢，怎么称呼你？'}))
+        examples.append({'role':'system','content':'口吻演示到此结束。下面才是实际对话，身份与信息以实际规则和上下文为准。'})
+        result=list(messages[:index])+examples+list(messages[index:])
+    else:
+        result=list(messages)
     personal_past=re.search(r'我.{0,3}(?:昨天|昨晚|上次|上周|前天|上个月|前几天|去年)',current)
     recall=re.search(r'记得|记不记得|还记|想起|告诉过|什么|哪儿|哪里|哪家|几点|多少|[？?]',current)
     if personal_past and recall:

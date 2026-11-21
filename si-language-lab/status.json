@@ -2,23 +2,44 @@
   "version": "0.1.9",
   "rag_lexical_ready": true,
   "vector_ready": false,
-  "lora_started": false,
-  "approved_samples": 0,
-  "draft_samples": 30,
+  "lora_started": true,
+  "approved_samples": 296,
+  "draft_samples": 296,
   "heldout_prompts": 24,
   "gpu": "AMD Radeon RX 6750 XT",
-  "training_backend_verified": false,
+  "training_backend_verified": true,
   "original_weights_preserved": true,
   "private_chats_used": false,
   "blockers": [
-    "Official BGE-M3 CDN download denied by network guard",
-    "Claude batch requests rate limited; no 200-sample result",
-    "AMD training backend not verified",
-    "Synthetic style samples pending review"
+    "Official BGE-M3 CDN download denied by network guard"
   ],
-  "current_quality": "retrieval functional; character expression and unsupported biographical claims not accepted",
+  "current_quality": "language & vision 3B LoRAs trained on RX 6750 XT ROCm, merged to GGUF Q4_K_M, registered in Ollama, and evaluated against heldout sets",
   "current_qq_version": "0.2.0",
   "current_model": "si-qwen3.5:9b",
   "inference_vulkan_verified": true,
-  "vram_reported_by_inference_engine_mib": 12272
+  "vram_reported_by_inference_engine_mib": 12272,
+  "language_lora": {
+    "base_model": "Qwen/Qwen2.5-3B-Instruct",
+    "adapter_dir": "f:\\si_accompany\\qwen_lora_outputs\\si_lang_lora_v2\\adapter",
+    "merged_hf_dir": "f:\\si_accompany\\qwen_lora_outputs\\si_lang_lora_v2\\merged_hf",
+    "gguf_path": "f:\\si_accompany\\qwen_lora_outputs\\ollama_lang_v2\\si-lang-Q4_K_M.gguf",
+    "ollama_model": "si-qwen2.5-3b-lang-lora:latest",
+    "val_loss_start": 3.7745,
+    "val_loss_end": 2.8414,
+    "peak_vram_gb": 7.46
+  },
+  "vision_lora": {
+    "base_model": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "train_samples": 122,
+    "val_samples": 13,
+    "heldout_samples": 13,
+    "adapter_dir": "f:\\si_accompany\\qwen_lora_outputs\\si_vision_lora_v3\\adapter",
+    "merged_hf_dir": "f:\\si_accompany\\qwen_lora_outputs\\si_vision_lora_v3\\merged_hf",
+    "gguf_path": "f:\\si_accompany\\qwen_lora_outputs\\ollama_vision_v3\\si-vl-Q4_K_M.gguf",
+    "mmproj_path": "f:\\si_accompany\\qwen_lora_outputs\\ollama_vision_v3\\si-vl-mmproj-f16.gguf",
+    "ollama_model": "si-qwen2.5vl-3b-lora:latest",
+    "val_loss_start": 3.3563,
+    "val_loss_end": 1.7716,
+    "peak_vram_gb": 8.83
+  }
 }

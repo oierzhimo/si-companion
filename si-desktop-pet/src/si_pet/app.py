@@ -164,15 +164,24 @@ def main(argv=None):
             if lan_probe:
                 report['lan_check']=lan_probe.report
                 report['ok']=report['ok'] and lan_probe.report.get('ok',False)
-            # Exercise the optional dialog's frozen imports and Qt construction
-            # in the isolated smoke directory, without contacting a model.
+            # Exercise both chat dialogs' frozen imports (including PIL & ssl)
+            # and Qt construction in the isolated smoke directory, without contacting a model.
             from .conversation_ui import ConversationDialog
+            from .chat_ui import MultimodalDialog
+            import ssl
+            ctx=ssl.create_default_context()
+            report['ssl_ca_count']=len(ctx.get_ca_certs())
             dialog=ConversationDialog(ctrl,store.path.parent/'qa-conversation.json',panel)
             report['conversation_ui_constructed']=True
             args.smoke_test.parent.mkdir(parents=True,exist_ok=True)
             if not dialog.grab().save(str(args.smoke_test.parent/'conversation-preview.png')):
                 raise RuntimeError('Conversation preview could not be saved')
             dialog.close()
+            mm_dialog=MultimodalDialog(ctrl,store.path.parent/'qa-multimodal.json',panel)
+            report['multimodal_ui_constructed']=True
+            if not mm_dialog.grab().save(str(args.smoke_test.parent/'multimodal-preview.png')):
+                raise RuntimeError('Multimodal preview could not be saved')
+            mm_dialog.close()
             args.smoke_test.parent.mkdir(parents=True,exist_ok=True)
             args.smoke_test.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');request_exit()
         QTimer.singleShot(2500,smoke)

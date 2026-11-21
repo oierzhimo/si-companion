@@ -13,6 +13,7 @@ if (-not (Test-SiPort 11434)) {
         OLLAMA_MODELS = 'E:\Ollama\models'
         OLLAMA_HOST = '127.0.0.1:11434'
         OLLAMA_KEEP_ALIVE = '5m'
+        OLLAMA_MAX_LOADED_MODELS = '2'
         TEMP = 'E:\Ollama\tmp'
         TMP = 'E:\Ollama\tmp'
     }

@@ -10,7 +10,7 @@ HARMONY=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from si_pet.sync_v1 import Ledger,COUNTERS
 from si_pet.sync_transport import PeerRegistry,LanServer
-NODE=Path(os.environ.get('SI_NODE',str(Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe')))
+NODE=Path(os.environ.get('SI_NODE',r'C:\Users\24771\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'))
 TSC=Path(os.environ.get('SI_TSC',r'F:\si_accompany\toolchains\typescript-5.6.3\package\lib\tsc.js'))
 core=HARMONY/'entry/src/main/ets/core'
 subprocess.run([str(NODE),str(TSC),'--strict','--target','ES2020','--module','commonjs',

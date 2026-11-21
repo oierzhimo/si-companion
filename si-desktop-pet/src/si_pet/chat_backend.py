@@ -437,7 +437,7 @@ class ChatSession:
                     or not isinstance(model, str) or len(model) > 200
                     or not isinstance(endpoint, str)):
                 raise ValueError('field invalid')
-            if provider not in ('local', 'genai'):
+            if provider not in ('local', 'genai', 'deepseek', 'custom', 'lan', 'remote'):
                 provider = 'local'
             self.turns = turns
             self.profile = profile

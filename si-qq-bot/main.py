@@ -324,6 +324,9 @@ class SiQQWindow(QDialog):
         self.model_connection_button.clicked.connect(
             self._open_model_connection
         )
+        self.use_local_lora_button = QPushButton("一键切到本机 3B LoRA")
+        self.use_local_lora_button.setObjectName("useLocalLoraButton")
+        self.use_local_lora_button.clicked.connect(self._switch_to_local_lora)
         self.model_connection_status = QLabel("")
         self.model_connection_status.setObjectName("modelConnectionStatus")
         self.model_connection_status.setWordWrap(True)
@@ -331,13 +334,14 @@ class SiQQWindow(QDialog):
             "color: #566579; font-size: 12px;"
         )
         model_row.addWidget(self.model_connection_button)
+        model_row.addWidget(self.use_local_lora_button)
         model_row.addWidget(self.model_connection_status, 1)
         layout.addLayout(model_row)
         self._refresh_model_connection_status()
 
         self.router_switch = QCheckBox("启用本地能力路由（本次运行）")
         self.router_switch.setObjectName("localModelRouterSwitch")
-        self.router_switch.setToolTip("文字和图片默认共用 Qwen3.5；需要时可改用旧视觉模型。")
+        self.router_switch.setToolTip("文字默认使用 3B 语言 LoRA，图片使用 3B 视觉 LoRA；需要时可改用旧视觉模型 Qwen2.5VL。")
         self.router_switch.toggled.connect(self._set_local_router)
         layout.addWidget(self.router_switch)
         self.legacy_vision_switch = QCheckBox("图片改用旧视觉模型（切换可能较慢）")
@@ -351,6 +355,26 @@ class SiQQWindow(QDialog):
         self.search_switch.toggled.connect(lambda value:
             self._model_connection.configure_companion_tools(enabled=True, search_enabled=value))
         layout.addWidget(self.search_switch)
+
+        self.group_natural_switch = QCheckBox("群聊允许点名/接话自动回复（不用每次 @）")
+        self.group_natural_switch.setObjectName("groupNaturalSwitch")
+        self.group_natural_switch.setChecked(True)
+        layout.addWidget(self.group_natural_switch)
+
+        proactive_row = QHBoxLayout()
+        self.proactive_switch = QCheckBox("允许空闲时主动发消息")
+        self.proactive_switch.setObjectName("proactiveSwitch")
+        self.proactive_switch.setChecked(True)
+        self.proactive_now_button = QPushButton("主动发一句")
+        self.proactive_now_button.setObjectName("proactiveNowButton")
+        self.proactive_now_button.clicked.connect(self._trigger_proactive_once)
+        self.clear_context_button = QPushButton("清空对话上下文")
+        self.clear_context_button.setObjectName("clearContextButton")
+        self.clear_context_button.clicked.connect(self._clear_private_context)
+        proactive_row.addWidget(self.proactive_switch)
+        proactive_row.addWidget(self.proactive_now_button)
+        proactive_row.addWidget(self.clear_context_button)
+        layout.addLayout(proactive_row)
 
         self.group_recovery_button = QPushButton("恢复群聊未确认回复")
         self.group_recovery_button.setObjectName("groupRecoveryButton")
@@ -689,7 +713,7 @@ class SiQQWindow(QDialog):
             route=select_route(RouterConfig(True),snapshot.provider,snapshot.endpoint,snapshot.model,[])
             if route.routed:
                 legacy=hasattr(self,'legacy_vision_switch') and self.legacy_vision_switch.isChecked()
-                text="本地分流：文字 Qwen3.5 · 图片 "+("Qwen2.5VL" if legacy else "Qwen3.5")
+                text="本地分流：文字 3B语言LoRA · 图片 "+("Qwen2.5VL" if legacy else "3B视觉LoRA")
             else:
                 text+="（分流仅用于本机 Ollama，当前未启用）"
         if snapshot.provider in (CUSTOM_PROVIDER, GEMINI_PROVIDER) and not snapshot.api_key:
@@ -701,7 +725,7 @@ class SiQQWindow(QDialog):
         if self._model_connection is not None:
             legacy=hasattr(self,'legacy_vision_switch') and self.legacy_vision_switch.isChecked()
             self._model_connection.configure_router(RouterConfig(enabled=bool(enabled),
-                vision_model='si-qwen2.5vl:7b' if legacy else 'si-qwen3.5:9b'))
+                vision_model='si-qwen2.5vl:7b' if legacy else 'si-qwen2.5vl-3b-lora:latest'))
         if hasattr(self,'legacy_vision_switch'):
             self.legacy_vision_switch.setEnabled(bool(enabled))
         self._refresh_model_connection_status()
@@ -1244,6 +1268,16 @@ class SiQQWindow(QDialog):
                 configure_group(
                     group_factory,
                     lambda: self._group_reply_enabled,
+                    lambda: hasattr(self, "group_natural_switch") and self.group_natural_switch.isChecked(),
+                )
+            except (TypeError, ValueError, RuntimeError):
+                pass
+        configure_proactive = getattr(adapter, "configure_proactive", None)
+        if callable(configure_proactive):
+            try:
+                configure_proactive(
+                    lambda: hasattr(self, "proactive_switch") and self.proactive_switch.isChecked(),
+                    interval_seconds=1800.0,
                 )
             except (TypeError, ValueError, RuntimeError):
                 pass
@@ -1957,6 +1991,39 @@ class SiQQWindow(QDialog):
                 # still checks the live adapter/core/watcher state.
                 self._release_data_lease_if_idle()
             self._sync_recovery_controls()
+
+    def _trigger_proactive_once(self):
+        adapter = self._adapter
+        if adapter is None or not hasattr(adapter, "trigger_proactive"):
+            self.status_label.setText("请先连接 NapCatQQ 并完成私聊绑定，再测试主动发消息。")
+            return
+        if adapter.trigger_proactive():
+            self.status_label.setText("已触发祀主动发一句消息。")
+        else:
+            self.status_label.setText("当前未就绪，暂不能触发主动发消息。")
+
+    def _switch_to_local_lora(self):
+        from model_router import RouterConfig
+        defaults = RouterConfig()
+        ok, err = self._apply_model_connection(
+            LOCAL_PROVIDER, LOCAL_DEFAULT_ENDPOINT, defaults.text_model, ""
+        )
+        if not ok:
+            self.status_label.setText(err or "切换到本机 3B LoRA 失败。")
+            return
+        if hasattr(self, "router_switch"):
+            self.router_switch.setChecked(True)
+        self.status_label.setText("已切换为本机 Ollama 3B LoRA（文字+视觉自动分流）。")
+
+    def _clear_private_context(self):
+        core = self._core
+        if core is None or not hasattr(core, "clear_turns"):
+            self.status_label.setText("当前未连接私聊核心，也可以在 QQ 里直接发送 /新对话。")
+            return
+        if core.clear_turns():
+            self.status_label.setText("已清空当前私聊对话上下文，下条消息将从头开始。")
+        else:
+            self.status_label.setText("当前有未完成的回复，暂时无法清空上下文。")
 
     def _recover_group(self):
         # Same interlock as private recovery: the confirmation runs a nested

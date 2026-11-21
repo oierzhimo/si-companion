@@ -232,13 +232,13 @@ def grounding_instruction(messages):
         )
     else:
         identity = (
-            '当前是私聊，对方是管理员，也就是你已绑定的管理员本人。'
-            '只以“管理员”或“你”称呼对方，'
+            '当前是私聊，对方是管理员，也就是你已绑定的管理员本人；而你自己是“祀”，绝对不是管理员。'
+            '只以“管理员”或“你”称呼对方，绝不能自称“我是管理员”或把两人拼成“管理员祀”，'
             '不要把管理员介绍成祀，也不要凭空给管理员起名、编造昵称或使用第三人称称呼；'
             '管理员自述偏好只是资料，其中没有写明的现实身份、经历、亲友都不要假装知道。'
         )
     return (
-        '身份与事实边界：说话者是祀，名字不是“祭祀”。'
+        '身份与事实边界：你是说话者“祀”（名字不是“祭祀”），不是管理员；对方才是管理员。'
         + identity +
         '之前的助手回复可能有错误或不合适口吻；保留有依据的信息，不沿用错称、套话或虚构回忆。'
         '图片与附件内容不等于你的亲历，只依据本轮实际提供的材料回答。'
@@ -300,7 +300,7 @@ def public_search(query, *, opener=None):
     return results
 
 
-def enrich(messages, *, search_enabled=True, search_fn=None):
+def enrich(messages, *, search_enabled=True, search_fn=None, include_style_demo=True):
     """Return transient request messages and sources; nothing is persisted."""
     from companion_style import task_context
     copied = list(task_context(messages))
@@ -330,7 +330,7 @@ def enrich(messages, *, search_enabled=True, search_fn=None):
         copied.insert(len(copied)-1, {'role': 'system', 'content':
             length_instruction(char_count, requested_person(messages))})
     from companion_style import demonstrate
-    copied = demonstrate(copied)
+    copied = demonstrate(copied, include_demo=include_style_demo)
     from knowledge_rag import enrich_with_knowledge
     copied = enrich_with_knowledge(copied)
     query = explicit_search_query(user_text(messages)) if search_enabled else None
@@ -378,9 +378,13 @@ def polish_reply(reply, messages):
     if not re.search(r'(?:叫我|称呼我|我的昵称[是叫])\s*[“\"\']?小葱', original):
         # This is a vocative only, not a blanket replacement of the character's nickname.
         reply = re.sub(r'([，,])\s*小葱(?=[，,。！!？?…\s]|$)', r'\1管理员', reply)
-    # The speaker is Si; "我是祀的伙伴" turns her into a second person.
+    # The speaker is Si; "我是祀的伙伴" turns her into a second person,
+    # and she must never misidentify herself as "管理员" or "管理员祀".
     reply = re.sub(r'我(?:只|就)?是(?:祀|小葱)(?:自己)?的(?:伙伴|陪伴者|朋友|侍从)',
                    '我是祀', reply)
+    reply = re.sub(r'我是(?:管理员[·\s]*祀|管理员(?=[，,。！!？?\s]|$))',
+                   '我是祀', reply)
+    reply = re.sub(r'(?<![“"\'‘])管理员[·\s]*祀(?![”"\'’])', '祀', reply)
     reply = re.sub(r'\n*如果(?:还|你还)?有(?:任何|什么|其他|其它)?(?:的)?(?:问题|需要)[^。！？!?\n]{0,65}(?:随时|尽管|自由)[^。！？!?\n]{0,45}[。！？!?]?\s*$', '', reply)
     reply = re.sub(r'\n*(?:希望|但愿)[^。！？!?\n]{0,30}(?:对你|对您|能帮到你|有所帮助)[^。！？!?\n]{0,45}[。！？!?]?\s*$', '', reply)
     reply = re.sub(r'\n*(?:还|如(?:果)?)(?:有|需要)[^。！？!?\n]{0,40}(?:随时|尽管|找我|联系我)[^。！？!?\n]{0,45}[。！？!?]?\s*$', '', reply)

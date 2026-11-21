@@ -8,8 +8,8 @@ _NAME=re.compile(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}\Z')
 @dataclass(frozen=True)
 class RouterConfig:
     enabled: bool=False
-    text_model: str='si-qwen3.5:9b'
-    vision_model: str='si-qwen3.5:9b'
+    text_model: str='si-qwen2.5-3b-lang-lora:latest'
+    vision_model: str='si-qwen2.5vl-3b-lora:latest'
     disable_text_thinking: bool=True
     def __post_init__(self):
         if type(self.enabled) is not bool or type(self.disable_text_thinking) is not bool:
@@ -49,7 +49,7 @@ def select_route(config,provider,endpoint,fallback_model,messages):
     except ValueError:return base
     if not eligible:return base
     selected=config.vision_model if image else config.text_model
-    no_thinking=config.disable_text_thinking and (not image or 'qwen3.5' in selected.lower())
+    no_thinking=config.disable_text_thinking and ('qwen3.5' in selected.lower())
     return ModelRoute(selected,'vision' if image else 'text',True,'none' if no_thinking else None)
 
 @dataclass(frozen=True)

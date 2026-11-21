@@ -18,14 +18,19 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 MAX_BYTES = 10 * 1024 * 1024
-MAX_TEXT = 4000
+MAX_TEXT = 7000
 MAX_IMAGES = 4
 MAX_IMAGE_URL_BYTES = 2_500_000
 # This host's verified NapCat download cache. Never accept a sender's path.
-QQ_CACHE_ROOTS = (Path(r'F:\QQ下载文件\NapCat\temp'),)
+QQ_CACHE_ROOTS = (Path(r'F:\QQ下载文件\NapCat\temp'), Path(r'F:\QQ下载文件\NapCat\data'))
 _CURRENT = contextvars.ContextVar('si_media_request', default=None)
 _IMAGE_TYPES = frozenset(('image', 'mface'))
-_TEXT_EXTENSIONS = frozenset(('.txt','.md','.csv','.json','.log','.py','.js','.java','.xml','.html','.yaml','.yml','.ini','.css','.sql'))
+_TEXT_EXTENSIONS = frozenset((
+    '.txt', '.md', '.csv', '.tsv', '.json', '.log', '.py', '.js', '.ts',
+    '.tsx', '.jsx', '.java', '.c', '.cpp', '.h', '.rs', '.go', '.xml',
+    '.html', '.yaml', '.yml', '.ini', '.conf', '.bat', '.ps1', '.sh',
+    '.css', '.sql',
+))
 
 def has_pending_media():
     scope=_CURRENT.get()
@@ -179,13 +184,14 @@ def make_resolver(loop, invoke, *, group_id=None, sender_id=None):
                        and not token.startswith(('/', '\\'))
                        and ':' not in token and '..' not in token)
         if valid_token:
-            try:
-                packet = api('get_file', {'file':token})
-                packet_data = packet.get('data', {}) if isinstance(packet,dict) else {}
-                name = _name(packet_data.get('file_name') or name)
-                return {'bytes':decode_download_reply(packet, fallback_url=direct_url,cache_roots=QQ_CACHE_ROOTS), 'name':name}
-            except Exception:
-                pass
+            for action in (('get_file', 'get_image') if kind in _IMAGE_TYPES else ('get_file',)):
+                try:
+                    packet = api(action, {'file': token})
+                    packet_data = packet.get('data', {}) if isinstance(packet, dict) else {}
+                    name = _name(packet_data.get('file_name') or name)
+                    return {'bytes': decode_download_reply(packet, fallback_url=direct_url, cache_roots=QQ_CACHE_ROOTS), 'name': name}
+                except Exception:
+                    pass
         if kind == 'file' and valid_token:
             if group_id is not None:
                 params = {'group_id':group_id, 'file_id':token}
@@ -227,6 +233,67 @@ def document_text(body, name):
         root = ET.fromstring(raw)
         return '\n'.join(''.join(p.itertext()) for p in root.iter()
                          if p.tag.endswith('}p'))[:MAX_TEXT]
+    if extension == '.xlsx':
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            shared = []
+            if 'xl/sharedStrings.xml' in archive.namelist():
+                s_info = archive.getinfo('xl/sharedStrings.xml')
+                if s_info.file_size <= 5 * 1024 * 1024:
+                    s_raw = archive.read(s_info)
+                    if b'<!DOCTYPE' in s_raw.upper() or b'<!ENTITY' in s_raw.upper():
+                        raise ValueError('document format')
+                    s_root = ET.fromstring(s_raw)
+                    shared = [''.join(si.itertext()) for si in s_root.iter() if si.tag.endswith('}si')]
+            lines = []
+            sheet_names = sorted(n for n in archive.namelist() if n.startswith('xl/worksheets/sheet') and n.endswith('.xml'))
+            for sname in sheet_names[:6]:
+                sh_info = archive.getinfo(sname)
+                if sh_info.file_size > 5 * 1024 * 1024:
+                    continue
+                sh_raw = archive.read(sh_info)
+                if b'<!DOCTYPE' in sh_raw.upper() or b'<!ENTITY' in sh_raw.upper():
+                    raise ValueError('document format')
+                sh_root = ET.fromstring(sh_raw)
+                for row in sh_root.iter():
+                    if not row.tag.endswith('}row'):
+                        continue
+                    vals = []
+                    for c in row:
+                        if not c.tag.endswith('}c'):
+                            continue
+                        t = c.attrib.get('t')
+                        v_el = next((ch for ch in c if ch.tag.endswith('}v')), None)
+                        if t == 's' and v_el is not None and v_el.text and v_el.text.isdigit():
+                            idx = int(v_el.text)
+                            vals.append(shared[idx] if idx < len(shared) else '')
+                        elif t == 'inlineStr':
+                            vals.append(''.join(c.itertext()))
+                        elif v_el is not None and v_el.text:
+                            vals.append(v_el.text)
+                    if any(vals):
+                        lines.append(' | '.join(vals))
+                if sum(len(x) for x in lines) >= MAX_TEXT:
+                    break
+            return '\n'.join(lines)[:MAX_TEXT]
+    if extension == '.pptx':
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            slides = sorted(n for n in archive.namelist() if n.startswith('ppt/slides/slide') and n.endswith('.xml'))
+            parts = []
+            for idx, sl in enumerate(slides[:20], 1):
+                sl_info = archive.getinfo(sl)
+                if sl_info.file_size > 2 * 1024 * 1024:
+                    continue
+                sl_raw = archive.read(sl_info)
+                if b'<!DOCTYPE' in sl_raw.upper() or b'<!ENTITY' in sl_raw.upper():
+                    raise ValueError('document format')
+                sl_root = ET.fromstring(sl_raw)
+                texts = [''.join(p.itertext()).strip() for p in sl_root.iter() if p.tag.endswith('}p')]
+                texts = [t for t in texts if t]
+                if texts:
+                    parts.append(f'[第{idx}页] ' + ' / '.join(texts))
+                if sum(len(x) for x in parts) >= MAX_TEXT:
+                    break
+            return '\n'.join(parts)[:MAX_TEXT]
     if extension == '.pdf':
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(body), strict=True)
@@ -324,5 +391,6 @@ def attach_pending(messages, *, local_enabled):
         '图片没有音轨，不可把字幕称作听到的语音。先辨认画面类型，再回答当前问题；'
         '不要套用上张图的内容，不确定的角色身份用“图中人物”，不要编造同伴关系。'
         '普通“这是什么”只概括用途与主要内容，不主动抄出电话、地址、订单号等私人字段。'
+        '总结或解读文件、表格、幻灯片或长截图时，按条目或分部分完整覆盖里面所有核心要点、数据与细节，不遗漏关键章节。'
         '已读到文件摘录时直接据摘录回答，不要套用“我只能处理文字”的能力免责声明。')
     return copied

@@ -8,7 +8,7 @@ ssl_data=[(str(ssl_policy),'.')] if ssl_policy.is_file() else []
 a=Analysis([str(root/'main.py')],pathex=[str(root/'src')],binaries=[],
     datas=[(str(root/'assets'),'assets'),(str(root/'licenses'),'licenses')]+ssl_data,
     hiddenimports=['PySide6.QtNetwork'],hookspath=[],hooksconfig={},runtime_hooks=[],
-    excludes=['tkinter','PySide6.QtQml','PySide6.QtQuick','PySide6.QtDesigner','PySide6.QtHelp','PIL','unittest'],noarchive=False)
+    excludes=['tkinter','PySide6.QtQml','PySide6.QtQuick','PySide6.QtDesigner','PySide6.QtHelp','unittest'],noarchive=False)
 # Qt uses Windows' unversioned ICU API. The host build environment also has a
 # different ICU with version-suffixed exports on PATH. Never redistribute it or
 # OS API-set / UCRT libraries in place of Windows 10/11's own implementations.

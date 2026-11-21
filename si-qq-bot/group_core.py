@@ -67,7 +67,7 @@ _MAX_INPUT = 1000
 # splits it into QQ-sized group messages; the ledger stores the whole answer
 # only after every chunk has been acknowledged.
 _MAX_REPLY = 12000
-_MAX_TURNS = 3
+_MAX_TURNS = 6
 _MAX_PAIRS = 32
 _MAX_PROCESSED_IDS = 256
 _MAX_TOKEN = 512
@@ -354,7 +354,14 @@ class GroupChat:
                 # No reply is returned unless its pending record is durable.
                 return None
             self._pending_recovery_required = False
-        return _private_core.CoreReply(reply, 'group_chat', token, getattr(raw_reply, 'segment', None))
+        return _private_core.CoreReply(
+            reply,
+            'group_chat',
+            token,
+            getattr(raw_reply, 'segment', None),
+            getattr(raw_reply, 'extra_segments', ()),
+            getattr(raw_reply, 'bubbles', ()),
+        )
 
     def _build_messages(self, turns, text, is_admin):
         persona = getattr(self._conversation, 'PERSONA')

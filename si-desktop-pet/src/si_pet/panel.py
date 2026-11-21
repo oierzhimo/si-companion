@@ -9,29 +9,10 @@ from PySide6.QtWidgets import (QWidget,QFrame,QLabel,QPushButton,QVBoxLayout,QHB
 from .storage import app_root,data_root
 from .companion import CONTACT_OPTIONS
 from .genai_status_widget import GenAIStatusWidget
+from .theme import bind_theme,panel_stylesheet,theme_colors
 from . import native,__version__
 
-STYLE='''
-QWidget{font-family:"Microsoft YaHei UI","Segoe UI";font-size:13px;color:#213f37;}
-QWidget#panel{background:#eef3ee;} QFrame#sidebar{background:#fafcf8;border-right:1px solid #dce5db;}
-QLabel#brand{font-size:33px;font-weight:650;color:#254b3b;} QLabel#muted{color:#7a8c80;font-size:12px;}
-QLabel#headline{font-size:30px;font-weight:650;color:#244839;} QLabel#eyebrow{font-size:11px;color:#7a8c80;letter-spacing:2px;}
-QLabel#subhead{font-size:18px;font-weight:600;} QFrame#card{background:#fafcf9;border:1px solid #dbe5db;border-radius:19px;}
-QPushButton{background:#fafcf8;border:1px solid #d3dfd3;border-radius:12px;padding:11px 17px;text-align:left;}
-QPushButton:hover{background:#e2eee2;border-color:#98b29d;} QPushButton:pressed{background:#ccdcca;}
-QPushButton#primary{background:#2f5946;color:#fff;border:0;font-weight:600;}QPushButton#primary:hover{background:#406f58;}
-QPushButton#nav{border:0;background:transparent;color:#6c8072;padding:13px 16px;border-radius:11px;}
-QPushButton#nav:checked{background:#e3ede0;color:#244839;font-weight:600;}
-QSlider::groove:horizontal{height:5px;background:#dbe5d9;border-radius:2px;}QSlider::sub-page:horizontal{background:#6a9575;border-radius:2px;}
-QSlider::handle:horizontal{background:#2e5945;width:16px;margin:-6px 0;border-radius:8px;}
-QCheckBox{spacing:10px;padding:8px 0;}QCheckBox::indicator{width:17px;height:17px;border:1px solid #b6cbb8;border-radius:5px;background:#fafcf8;}
-QCheckBox::indicator:checked{background:#547d5d;border-color:#547d5d;}
-QComboBox{background:#fafcf8;border:1px solid #cbd9cc;border-radius:8px;padding:7px;}
-QScrollArea{border:0;background:transparent;}QScrollArea>QWidget>QWidget{background:transparent;}
-QTextBrowser{background:#fafcf8;border:1px solid #dbe5db;border-radius:14px;padding:13px;}
-QProgressBar{background:#e1eade;border:0;border-radius:4px;height:8px;text-align:center;}
-QProgressBar::chunk{background:#789b75;border-radius:4px;}
-'''
+STYLE=panel_stylesheet(False)
 
 def label(text,kind=None,wrap=False):
     w=QLabel(text)
@@ -63,21 +44,22 @@ class Preview(QWidget):
         visible=QRectF(position.x()+bounds.x()*scale,position.y()+bounds.y()*scale,bounds.width()*scale,bounds.height()*scale)
         return pix,position,visible,area
     def paintEvent(self,event):
+        colors=theme_colors()
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        g=QLinearGradient(0,0,self.width(),self.height());g.setColorAt(0,QColor('#e1ead8'));g.setColorAt(1,QColor('#c7d9c8'))
+        g=QLinearGradient(0,0,self.width(),self.height());g.setColorAt(0,QColor(colors['preview_grad0']));g.setColorAt(1,QColor(colors['preview_grad1']))
         p.setBrush(g);p.setPen(Qt.PenStyle.NoPen);p.drawRoundedRect(self.rect(),20,20)
-        p.setBrush(QColor(250,253,242,65));p.drawEllipse(self.width()-190,-65,260,260);p.drawEllipse(-85,self.height()-145,230,230)
+        p.setBrush(QColor(*colors['preview_glow']));p.drawEllipse(self.width()-190,-65,260,260);p.drawEllipse(-85,self.height()-145,230,230)
         state,index=self.ctrl.animation()
         pix,position,_,_=self.frame_layout(state,index)
         p.drawPixmap(position,pix)
-        p.setPen(QColor('#52725b'));p.setFont(QFont('Segoe UI',9));p.drawText(21,32,'SI  /  A LITTLE COMPANY')
+        p.setPen(QColor(colors['preview_text']));p.setFont(QFont('Segoe UI',9));p.drawText(21,32,'SI  /  A LITTLE COMPANY')
         p.setFont(QFont('Microsoft YaHei UI',9));p.drawText(21,self.height()-18,'随心所欲 · 也会为你停留')
 
 class Panel(QWidget):
     def __init__(self,ctrl,pet,voice=None):
         super().__init__();self.ctrl=ctrl;self.pet=pet;self.voice=voice;self.setObjectName('panel')
         self.setWindowTitle('祀 · 桌面伙伴');self.setWindowIcon(ctrl.sprites.icon())
-        self.setMinimumSize(900,680);self.resize(1000,740);self.setStyleSheet(STYLE)
+        self.setMinimumSize(900,680);self.resize(1000,740)
         outer=QHBoxLayout(self);outer.setSpacing(0);outer.setContentsMargins(0,0,0,0)
         side=QFrame();side.setObjectName('sidebar');side.setFixedWidth(212)
         sl=QVBoxLayout(side);sl.setContentsMargins(22,30,22,24);sl.setSpacing(7)
@@ -94,7 +76,13 @@ class Panel(QWidget):
         cl.addWidget(self.stack);outer.addWidget(container,1)
         self.stack.addWidget(self.home());self.stack.addWidget(self.settings());self.stack.addWidget(self.journal());self.stack.addWidget(self.about())
         self.timer=QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(1000)
-        ctrl.changed.connect(self.refresh);self.refresh()
+        ctrl.changed.connect(self.refresh);bind_theme(self,self.apply_theme);self.refresh()
+
+    def apply_theme(self):
+        self.setStyleSheet(panel_stylesheet())
+        self._history_html=None
+        if hasattr(self,'history'):self.refresh()
+        if hasattr(self,'preview'):self.preview.update()
 
     def heading(self,title,subtitle):
         w=QWidget();l=QVBoxLayout(w);l.setContentsMargins(0,0,0,14);l.setSpacing(8)
@@ -120,8 +108,8 @@ class Panel(QWidget):
         for title,topic in CONTACT_OPTIONS:
             contact_menu.addAction(title,lambda checked=False,t=topic:self.ctrl.contact(t))
         contact.setMenu(contact_menu);right.addWidget(contact)
-        right.addWidget(button('自由聊聊 · 本机或学校反代',self.open_conversation))
-        right.addWidget(button('多模态聊聊 · 图片与语音',self.open_multimodal_chat))
+        right.addWidget(button('自由聊聊 · 本机 / DeepSeek / 自定义',self.open_conversation))
+        right.addWidget(button('多模态聊聊 · 本机 / DeepSeek / 自定义',self.open_multimodal_chat))
         self.contact_reply_text=label('选一个话题，她会认真听。','muted',True)
         right.addWidget(self.contact_reply_text)
         self.ctrl.contact_reply.connect(self.contact_reply_text.setText)
@@ -255,7 +243,8 @@ class Panel(QWidget):
         for key,v in self.value_labels.items():v.setText(f'{self.ctrl.store[key]:.2f} 倍' if key=='scale' else str(int(self.ctrl.store[key])))
         self.mood.setValue(int(self.ctrl.store['mood']))
         rows=self.ctrl.store['history'][-35:]
-        content='<h3>相伴手记</h3>'+''.join(f'<p><span style="color:#81917e">{html.escape(str(r.get("at","")))}</span><br>{html.escape(str(r.get("text","")))}</p>' for r in reversed(rows) if isinstance(r,dict))
+        meta_color=theme_colors()['journal_meta']
+        content='<h3>相伴手记</h3>'+''.join(f'<p><span style="color:{meta_color}">{html.escape(str(r.get("at","")))}</span><br>{html.escape(str(r.get("text","")))}</p>' for r in reversed(rows) if isinstance(r,dict))
         if not rows:content+='<p>第一段相伴，从现在开始。</p>'
         if getattr(self,'_history_html',None)!=content:self.history.setHtml(content);self._history_html=content
 

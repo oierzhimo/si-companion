@@ -205,7 +205,20 @@ def _plain_text(message) -> str | None:
     return text if _TEXT_SEGMENT.fullmatch(text.strip()) else None
 
 
-def _group_message_text(message, bot_id: str) -> str | None:
+def _has_at_bot(message, bot_id: str) -> bool:
+    if not isinstance(message, list):
+        return False
+    for segment in message:
+        if isinstance(segment, dict) and segment.get("type") == "at":
+            data = segment.get("data")
+            if isinstance(data, dict) and _account_id(data.get("qq")) == bot_id:
+                return True
+    return False
+
+
+def _group_message_text(message, bot_id: str, *, allow_followup: bool = False,
+                        bot_msg_ids: frozenset | set | OrderedDict = (),
+                        active_recent: bool = False) -> str | None:
     """Return the prompt text for an array message that explicitly @s *bot_id*.
 
     A string message is never a group mention: text such as ``@bot`` cannot
@@ -240,6 +253,10 @@ def _group_message_text(message, bot_id: str) -> str | None:
                 mentioned = True
             continue
         if segment_type == "reply":
+            if allow_followup and isinstance(data, dict):
+                rid = data.get("id")
+                if rid is not None and str(rid) in bot_msg_ids:
+                    mentioned = True
             # Quoted-message metadata is not conversation content.
             continue
         if segment_type == "text":
@@ -257,6 +274,10 @@ def _group_message_text(message, bot_id: str) -> str | None:
         # Other segments (for example a plain emoji face) are ignored exactly
         # as before.
         continue
+    raw_joined = "".join(pieces).strip()
+    if not mentioned and allow_followup:
+        if active_recent or re.match(r"^\s*(?:小祀|祀(?:[，,、:：\s!！~～?？]|$))", raw_joined):
+            mentioned = True
     if not mentioned:
         return None
 
@@ -380,7 +401,7 @@ class OneBotAdapter:
     def __init__(self, ws_url, onebot_token, core_factory,
                  status_callback=None, connect_factory=None,
                  group_factory=None, group_enabled=None,
-                 send_pacing=0.25):
+                 send_pacing=0.45):
         if not validate_ws_url(ws_url):
             raise ValueError("invalid local OneBot endpoint")
         if not _valid_token(onebot_token):
@@ -412,11 +433,19 @@ class OneBotAdapter:
         # contract.
         self._group_factory = group_factory
         self._group_enabled = group_enabled
+        self._group_followups = None
         self._group_core = None
         self._pending_group_media = PendingGroupMedia()
         self._private_recent_media = {}
         self._queued_group_media = {}
         self._seen_group_mentions = OrderedDict()
+        self._active_group_pairs = {}
+        self._bot_group_msg_ids = OrderedDict()
+        self._non_at_group_keys = set()
+        self._proactive_enabled = None
+        self._proactive_interval = 1800.0
+        self._last_private_activity = time.monotonic()
+        self._proactive_event = None
         self._state_lock = threading.RLock()
         self._thread = None
         self._loop = None
@@ -441,8 +470,11 @@ class OneBotAdapter:
             self._queued_group_media.clear()
             self._seen_group_mentions.clear()
             self._pending_group_media.clear()
+            self._active_group_pairs.clear()
+            self._bot_group_msg_ids.clear()
+            self._non_at_group_keys.clear()
 
-    def configure_group(self, group_factory=None, group_enabled=None):
+    def configure_group(self, group_factory=None, group_enabled=None, group_followups=None):
         """Attach the optional group surface before ``start``.
 
         ``group_factory(bot_id, private_core)`` must return a thread-safe group
@@ -455,12 +487,37 @@ class OneBotAdapter:
             raise TypeError("group_factory must be callable")
         if group_enabled is not None and not callable(group_enabled):
             raise TypeError("group_enabled must be callable")
+        if group_followups is not None and not callable(group_followups):
+            raise TypeError("group_followups must be callable")
         with self._state_lock:
             if self._running:
                 return False
             self._group_factory = group_factory
             self._group_enabled = group_enabled
+            self._group_followups = group_followups
             return True
+
+    def configure_proactive(self, enabled_cb=None, interval_seconds=1800.0):
+        if enabled_cb is not None and not callable(enabled_cb):
+            raise TypeError("enabled_cb must be callable")
+        with self._state_lock:
+            self._proactive_enabled = enabled_cb
+            self._proactive_interval = max(60.0, float(interval_seconds))
+            return True
+
+    def trigger_proactive(self) -> bool:
+        """Request one immediate proactive check-in on the running adapter."""
+        with self._state_lock:
+            loop = self._loop
+            ev = self._proactive_event
+            running = self._running
+        if not running or loop is None or ev is None:
+            return False
+        try:
+            loop.call_soon_threadsafe(ev.set)
+            return True
+        except RuntimeError:
+            return False
 
     def start(self) -> bool:
         """Start one background connection; return immediately.
@@ -758,6 +815,12 @@ class OneBotAdapter:
                                 ws, pending_api, group_queue, group_core
                             )
                         )
+                    proactive_ev = asyncio.Event()
+                    with self._state_lock:
+                        self._proactive_event = proactive_ev
+                    proactive_task = asyncio.create_task(
+                        self._proactive_loop(ws, pending_api, core, proactive_ev)
+                    )
                     self._status("connected", "已识别 QQ 账号，可在本机生成绑定码。")
                     seen = set()
                     while True:
@@ -766,10 +829,13 @@ class OneBotAdapter:
                             break
                         await self._handle_event(ws, pending_api, event, seen)
                 finally:
+                    with self._state_lock:
+                        self._proactive_event = None
                     reader.cancel()
+                    proactive_task.cancel()
                     if group_worker is not None:
                         group_worker.cancel()
-                    tasks = [reader]
+                    tasks = [reader, proactive_task]
                     if group_worker is not None:
                         tasks.append(group_worker)
                     await asyncio.gather(*tasks, return_exceptions=True)
@@ -795,6 +861,24 @@ class OneBotAdapter:
                     if not future.done():
                         future.set_result(packet)
                     continue
+                if packet.get('post_type') == 'notice' and packet.get('notice_type') == 'offline_file':
+                    uploaded = packet.get('file')
+                    if not isinstance(uploaded, dict):
+                        continue
+                    file_id = uploaded.get('id') or uploaded.get('url') or uploaded.get('name')
+                    if not isinstance(file_id, str) or not file_id or len(file_id) > 4096:
+                        continue
+                    try:
+                        upload_key = hashlib.sha256(file_id.encode('utf-8')).hexdigest()
+                    except UnicodeError:
+                        continue
+                    packet = {
+                        'post_type': 'message', 'message_type': 'private', 'sub_type': 'friend',
+                        'self_id': packet.get('self_id'),
+                        'user_id': packet.get('user_id'),
+                        'message_id': 'offline-' + upload_key[:32],
+                        'message': [{'type': 'file', 'data': dict(uploaded, file_id=uploaded.get('id') or file_id)}],
+                    }
                 if packet.get('post_type') == 'notice' and packet.get('notice_type') == 'group_upload':
                     uploaded = packet.get('file')
                     if not isinstance(uploaded, dict):
@@ -922,16 +1006,25 @@ class OneBotAdapter:
                           if isinstance(s,dict) and s.get('type')=='text' and isinstance(s.get('data'),dict)]
                 if not all(isinstance(p,str) for p in pieces):
                     return
-                text = ''.join(pieces).strip() or '对方发来了附件，请根据本轮实际提供的内容自然回应。'
+                joined = ''.join(pieces).strip()
+                if not joined:
+                    segs = media[0].get('segments', ()) if media else ()
+                    fnames = [s.get('data', {}).get('name') or s.get('data', {}).get('file') for s in segs if s.get('type') == 'file']
+                    if fnames and isinstance(fnames[0], str):
+                        joined = f'我发了一个文件（{fnames[0][:60]}），请完整看看里面写了什么并告诉我。'
+                    else:
+                        joined = '我发了一张图片，请仔细看看里面的全部内容并告诉我。'
+                text = joined
                 if not _TEXT_SEGMENT.fullmatch(text):
                     return
         if text is None or not text.strip():
             return
-        if not media and re.search(r'这[个是张份]|刚才|附件|文件|图[片里中]|概[括述]|总结',text):
+        if not media and re.search(r'这[个是张份段条页]|刚才|上面|前面|附件|文件|图[片里中上]|文档|表格|截[图屏]|内容|概[括述]|总结|讲讲|读一下|看下|看看|里面',text):
             recent=self._private_recent_media.get(sender_id)
             if (recent and time.monotonic()-recent[0]<600
                     and core.is_administrator(sender_id)):
                 media=recent[1]
+        self._last_private_activity = time.monotonic()
         self._private_recent_media={key:value for key,value in self._private_recent_media.items()
                                     if time.monotonic()-value[0]<600}
         seen.add(message_id)
@@ -996,14 +1089,26 @@ class OneBotAdapter:
         token = getattr(reply, "delivery_token", None)
         delivered_count = 0
         segment = getattr(reply, 'segment', None)
+        extra_segments = tuple(getattr(reply, 'extra_segments', ()) or ())
+        bubbles = tuple(getattr(reply, 'bubbles', ()) or ())
         if segment is not None:
             chunks = [reply.text]
-        total = len(chunks)
-        for index, chunk in enumerate(chunks):
+        elif bubbles and is_chat:
+            expanded = []
+            for bubble in bubbles:
+                split_b = _split_outgoing(bubble)
+                expanded.extend(split_b if split_b else [bubble])
+            if expanded and all(_valid_chunk(c) for c in expanded):
+                chunks = expanded
+        steps = ([segment] if segment is not None else [{"type": "text", "data": {"text": c}} for c in chunks])
+        if segment is None:
+            steps.extend(extra_segments)
+        total = len(steps)
+        for index, payload_seg in enumerate(steps):
             try:
                 ack = await self._api(ws, pending_api, "send_private_msg", {
                     "user_id": sender_id,
-                    "message": [segment] if segment is not None else [{"type": "text", "data": {"text": chunk}}],
+                    "message": [payload_seg],
                 })
             except asyncio.CancelledError:
                 # The request may already be on the wire; never resend it and
@@ -1080,6 +1185,60 @@ class OneBotAdapter:
                 raise
             if saved:
                 self._status("reply_acknowledged", _REPLY_ACKNOWLEDGED_TEXT)
+                self._last_private_activity = time.monotonic()
+
+    def _proactive_enabled_now(self):
+        cb = self._proactive_enabled
+        if cb is None:
+            return False
+        try:
+            return bool(cb())
+        except Exception:
+            return False
+
+    async def _proactive_loop(self, ws, pending_api, core, trigger_event):
+        while True:
+            triggered = False
+            try:
+                wait_sec = 30.0 if self._proactive_enabled_now() else 3600.0
+                await asyncio.wait_for(trigger_event.wait(), timeout=wait_sec)
+                trigger_event.clear()
+                triggered = True
+            except asyncio.TimeoutError:
+                pass
+            if not triggered:
+                if not self._proactive_enabled_now():
+                    continue
+                if time.monotonic() - self._last_private_activity < self._proactive_interval:
+                    continue
+            with self._state_lock:
+                running = self._running
+            if not running:
+                break
+            admin_fn = getattr(core, 'administrator_id', None)
+            proactive_fn = getattr(core, 'proactive_private', None)
+            if not callable(admin_fn) or not callable(proactive_fn):
+                continue
+            sender_id = admin_fn()
+            if not sender_id:
+                continue
+            try:
+                reply = await self._call_core(
+                    proactive_fn,
+                    on_abandon=self._abandon_unsent(core),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                continue
+            if reply is None or not isinstance(getattr(reply, 'text', None), str):
+                continue
+            chunks = _split_outgoing(reply.text)
+            if not chunks:
+                continue
+            await self._deliver_private_chunks(
+                ws, pending_api, core, reply, sender_id, chunks, True
+            )
 
     # -- group mention path -------------------------------------------
 
@@ -1091,6 +1250,15 @@ class OneBotAdapter:
             return bool(callback())
         except Exception:
             # Fail closed: an unreadable local switch never enables replies.
+            return False
+
+    def _group_followups_now(self):
+        callback = self._group_followups
+        if callback is None:
+            return False
+        try:
+            return bool(callback())
+        except Exception:
             return False
 
     def _group_event_details(self, event):
@@ -1134,7 +1302,18 @@ class OneBotAdapter:
         message_id = str(raw_message_id)
         if _MESSAGE_ID.fullmatch(message_id) is None:
             return None
-        text = _group_message_text(event.get("message"), bot_id)
+        allow_followup = self._group_followups_now()
+        with self._state_lock:
+            bot_msg_ids = set(self._bot_group_msg_ids.keys())
+            last_ts = self._active_group_pairs.get((group_id, sender_id))
+            active_recent = bool(last_ts is not None and (time.monotonic() - last_ts) < 45.0)
+        text = _group_message_text(
+            event.get("message"),
+            bot_id,
+            allow_followup=allow_followup,
+            bot_msg_ids=bot_msg_ids,
+            active_recent=active_recent,
+        )
         if text is None:
             return None
         return group_id, sender_id, message_id, text
@@ -1217,30 +1396,47 @@ class OneBotAdapter:
             if not _valid_chunk(reply_text):
                 return
             chunks = [reply_text]
+        had_at = _has_at_bot(event.get("message"), self._bot_id)
         await self._deliver_group_chunks(
             ws, pending_api, group_core, reply,
-            group_id, sender_id, chunks, is_chat,
+            group_id, sender_id, chunks, is_chat, mention_sender=had_at,
         )
 
     async def _deliver_group_chunks(self, ws, pending_api, group_core, reply,
-                                    group_id, sender_id, chunks, is_chat):
-        """Send group chunks in order; the sender is @-ed on the first only."""
+                                    group_id, sender_id, chunks, is_chat,
+                                    *, mention_sender=True):
+        """Send group chunks in order; the sender is @-ed on the first only when @-ed."""
         token = getattr(reply, "delivery_token", None)
         delivered_count = 0
         segment = getattr(reply, 'segment', None)
+        extra_segments = tuple(getattr(reply, 'extra_segments', ()) or ())
+        bubbles = tuple(getattr(reply, 'bubbles', ()) or ())
         if segment is not None:
             chunks = [reply.text]
-        total = len(chunks)
+        elif bubbles and is_chat:
+            expanded = []
+            for bubble in bubbles:
+                split_b = _split_outgoing(bubble)
+                expanded.extend(split_b if split_b else [bubble])
+            if expanded and all(_valid_chunk(c) for c in expanded):
+                chunks = expanded
+        steps = []
         for index, chunk in enumerate(chunks):
             message = []
-            if index == 0:
+            if index == 0 and mention_sender:
                 message.append({"type": "at", "data": {"qq": sender_id}})
             # Native @ segment followed by a visible separator for QQ clients.
             # This transport space is not part of the stored model answer.
-            wire_text = (' ' if index == 0 else '') + chunk
+            wire_text = (' ' if (index == 0 and mention_sender) else '') + chunk
             message.append({"type": "text", "data": {"text": " " if segment is not None else wire_text}})
             if segment is not None:
                 message.append(segment)
+            steps.append(message)
+        if segment is None:
+            for extra in extra_segments:
+                steps.append([extra])
+        total = len(steps)
+        for index, message in enumerate(steps):
             try:
                 ack = await self._api(ws, pending_api, "send_group_msg", {
                     "group_id": group_id,
@@ -1275,6 +1471,13 @@ class OneBotAdapter:
             outcome = _delivery_outcome(ack)
             if outcome == "delivered":
                 delivered_count += 1
+                sent_mid = ack.get("data", {}).get("message_id") if isinstance(ack, dict) and isinstance(ack.get("data"), dict) else None
+                with self._state_lock:
+                    if sent_mid is not None:
+                        self._bot_group_msg_ids[str(sent_mid)] = None
+                        while len(self._bot_group_msg_ids) > 128:
+                            self._bot_group_msg_ids.popitem(last=False)
+                    self._active_group_pairs[(group_id, sender_id)] = time.monotonic()
                 if index < total - 1:
                     try:
                         await asyncio.sleep(self._send_pacing)

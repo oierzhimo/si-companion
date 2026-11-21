@@ -14,7 +14,14 @@ import urllib.error
 import urllib.parse
 
 _LOCK = threading.RLock()
-_ALIASES = {'si-qwen3.5:9b', 'si-qwen2.5vl:7b'}
+_ALIASES = {
+    'si-qwen2.5-3b-lang-lora:latest',
+    'si-qwen2.5-3b-lang-lora',
+    'si-qwen2.5vl-3b-lora:latest',
+    'si-qwen2.5vl-3b-lora',
+    'si-qwen3.5:9b',
+    'si-qwen2.5vl:7b',
+}
 
 
 class ResourceBusy(RuntimeError):

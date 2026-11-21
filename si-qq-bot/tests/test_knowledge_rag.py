@@ -57,4 +57,24 @@ class KnowledgeTests(unittest.TestCase):
             with patch('urllib.request.OpenerDirector.open',side_effect=AssertionError('not allowed')):
                 self.assertEqual(rag.retrieve('帝江号在哪里？',root=root)[0]['id'],'a')
 
+    def test_production_corpus_loads_cleanly_and_retrieves_endfield_topics(self):
+        rag.load_corpus.cache_clear()
+        rows, _ = rag.load_corpus(rag.ROOT)
+        self.assertGreaterEqual(len(rows), 75)
+        for query, expected_sub in [
+            ('四号谷地和TA-TA、聂菲斯是什么剧情？', '四号谷地'),
+            ('应龙关、枢壤仪和传火是怎么回事？', '枢壤仪'),
+            ('着新墨和祀的画境里发生了什么？', '着新墨'),
+            ('司岁台、应龙特勤队和谈老是什么关系？', '司岁台'),
+            ('祀平时喜欢吃什么火锅，为什么去火锅店？', '火锅'),
+        ]:
+            with patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('offline')):
+                hits = rag.retrieve(query, root=rag.ROOT)
+            self.assertTrue(hits, f'Expected hits for {query}')
+            self.assertTrue(
+                any(expected_sub in h['title'] + h['text'] for h in hits),
+                f'Expected {expected_sub!r} in {[h["title"] for h in hits]}',
+            )
+        self.assertFalse(rag.lore_query('有什么做饭的秘诀吗？'))
+
 if __name__=='__main__':unittest.main()

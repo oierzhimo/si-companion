@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt,QPoint,QTimer,QRectF,QRect
 from PySide6.QtGui import QPainter,QColor,QPen,QCursor,QRegion
 from PySide6.QtWidgets import QWidget,QLabel,QMenu,QApplication
 from .companion import CONTACT_OPTIONS
+from .theme import menu_stylesheet
 from . import native
 
 def request_exit():
@@ -159,7 +160,7 @@ class PetWindow(QWidget):
     def contextMenuEvent(self,event):self.menu().exec(event.globalPos())
 
     def menu(self):
-        menu=QMenu();menu.setStyleSheet('QMenu{background:#f7faf7;color:#183b35;padding:8px;border:1px solid #bdd3c5;border-radius:8px;}QMenu::item{padding:8px 24px;}QMenu::item:selected{background:#dcece2;}')
+        menu=QMenu();menu.setStyleSheet(menu_stylesheet())
         menu.addAction('祀 · 陪伴面板',self.open_panel);menu.addSeparator()
         for text,action in [('散步','walk'),('坐下','sit'),('躺下休息','sleep'),('跳一下','jump'),('招招手','wave'),('灵光一闪','special')]:
             menu.addAction(text,lambda checked=False,a=action:self.ctrl.perform(a))

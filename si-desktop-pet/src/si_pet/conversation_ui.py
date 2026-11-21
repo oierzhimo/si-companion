@@ -6,13 +6,19 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QComboBox, QCompleter, QDialog, QVBoxLayout, QHBoxLayout,
                               QLabel, QLineEdit, QTextEdit, QTextBrowser, QPushButton,
                               QFormLayout)
-from .conversation import (Conversation, ConversationError, DEFAULT_GENAI_ENDPOINT,
+from .conversation import (CUSTOM_DEFAULT_ENDPOINT, Conversation, ConversationError,
+                           DEEPSEEK_DEFAULT_ENDPOINT, DEEPSEEK_DEFAULT_MODEL,
+                           DEEPSEEK_MODELS, DEFAULT_GENAI_ENDPOINT,
                            DEFAULT_LOCAL_ENDPOINT, GENAI_DEFAULT_API_KEY,
                            GENAI_DEFAULT_MODEL, GENAI_NO_MATCH_MESSAGE,
+                           LAN_DEFAULT_ENDPOINT, LAN_DEFAULT_MODEL,
                            MODELS_EMPTY_MESSAGE, PROVIDERS,
+                           REMOTE_DEFAULT_ENDPOINT, REMOTE_DEFAULT_MODEL,
+                           endpoint_for_provider,
                            fetch_models as fetch_models_request, filter_genai_models,
                            local_endpoint, looks_like_gpt_model, request_reply,
                            resolve_genai_model, validate_model_for_send)
+from .theme import bind_theme, dialog_stylesheet
 
 # A quiet request is acted on only when the whole message is one of these
 # exact, affirmative phrasings.  This is intentionally a closed list: no
@@ -114,23 +120,30 @@ class ConversationDialog(QDialog):
         self.available_models = []
         self.setWindowTitle('和祀聊聊 · 自由聊聊')
         self.resize(640, 700)
+        bind_theme(self, lambda: self.setStyleSheet(dialog_stylesheet()))
         layout = QVBoxLayout(self)
-        hint = QLabel('普通本机模型只连接本机。上科大 GenAI 反代会把本次文字、偏好与最近 12 轮经本机反代送到学校模型；'
-                      '对话记录只保存在本机，不参与设备同步，也不代表本机服务本身离线。')
+        hint = QLabel('支持本机模型（Ollama / LM Studio）、DeepSeek 官方 API、自定义模型接口（如学校 API 网关），'
+                      '以及上科大 GenAI 反代；对话记录只保存在本机，API Key / 口令仅留内存不写盘。')
         hint.setWordWrap(True); layout.addWidget(hint)
         form = QFormLayout()
         self.service = QComboBox()
-        self.service.addItem('普通本机模型', 'local')
+        self.service.addItem('本机模型（Ollama / 本地端口）', 'local')
         self.service.addItem('上科大 GenAI 反代', 'genai')
-        self.service.setCurrentIndex(1 if self.provider == 'genai' else 0)
+        self.service.addItem('DeepSeek 官方 API', 'deepseek')
+        self.service.addItem('自定义模型接口（学校 API / 第三方）', 'custom')
+        self.service.addItem('远程显卡主机（跨网 / 穿透 / 组网）', 'remote')
+        self.service.setCurrentIndex({'local': 0, 'genai': 1, 'deepseek': 2, 'custom': 3, 'remote': 4, 'lan': 4}.get(self.provider, 0))
         self.endpoint = QLineEdit(self.session.endpoint)
         self.model = QLineEdit(self.session.model)
-        self.model.setPlaceholderText('服务中已加载的模型名称；不要猜测')
+        self.model.setPlaceholderText('模型名称；如 deepseek-chat 或本机已加载模型')
         self.model_completer = QCompleter([], self.model)
         self.model.setCompleter(self.model_completer)
         self.api_key = QLineEdit()
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText('普通本机可留空；只保留在内存')
+        self.api_key.setPlaceholderText(
+            '请填写 DeepSeek API Key（sk-...）；只保留在内存' if self.provider == 'deepseek'
+            else '普通本机可留空；只保留在内存'
+        )
         self.api_key.setText(GENAI_DEFAULT_API_KEY if self.provider == 'genai' else '')
         self.get_models = QPushButton('获取模型')
         model_row = QHBoxLayout()
@@ -138,11 +151,14 @@ class ConversationDialog(QDialog):
         self.profile = QTextEdit(); self.profile.setMaximumHeight(85)
         self.profile.setPlaceholderText('可选：希望怎样称呼你、喜欢的话题、希望怎样陪伴。不必填写私人信息。')
         self.profile.setPlainText(self.session.profile)
-        form.addRow('服务预设', self.service)
-        form.addRow('本机接口', self.endpoint)
-        form.addRow('反代访问口令', self.api_key)
+        self.endpoint_label = QLabel('接口地址')
+        self.api_key_label = QLabel('API Key / 口令')
+        form.addRow('连接方式', self.service)
+        form.addRow(self.endpoint_label, self.endpoint)
+        form.addRow(self.api_key_label, self.api_key)
         form.addRow('模型', model_row)
         form.addRow('管理员偏好', self.profile); layout.addLayout(form)
+        self._update_provider_labels(self.provider)
         self.transcript = QTextBrowser(); layout.addWidget(self.transcript, 1)
         self.input = QTextEdit(); self.input.setMaximumHeight(100)
         self.input.setPlaceholderText('想说的话……'); layout.addWidget(self.input)
@@ -199,6 +215,33 @@ class ConversationDialog(QDialog):
         try: self.clear_model_completer()
         except (RuntimeError, TypeError): pass
 
+    def _update_provider_labels(self, provider):
+        if provider == 'deepseek':
+            self.endpoint_label.setText('DeepSeek 接口')
+            self.endpoint.setPlaceholderText('https://api.deepseek.com/v1')
+            self.api_key_label.setText('DeepSeek API Key')
+            self.api_key.setPlaceholderText('必填：DeepSeek API Key（sk-...），仅保留在内存')
+        elif provider == 'custom':
+            self.endpoint_label.setText('自定义接口地址')
+            self.endpoint.setPlaceholderText('填写学校或第三方 OpenAI 兼容地址，如 https://.../v1')
+            self.api_key_label.setText('API Key / 访问口令')
+            self.api_key.setPlaceholderText('填写学校平台提供的 API Key / 口令（仅留内存；无需可留空）')
+        elif provider in ('lan', 'remote'):
+            self.endpoint_label.setText('远程主机地址')
+            self.endpoint.setPlaceholderText('例如 https://xxx.trycloudflare.com/v1')
+            self.api_key_label.setText('访问口令 / Key')
+            self.api_key.setPlaceholderText('无鉴权可留空；若挂了反向代理鉴权请填写，仅留内存')
+        elif provider == 'genai':
+            self.endpoint_label.setText('本机接口')
+            self.endpoint.setPlaceholderText('http://127.0.0.1:8000/v1')
+            self.api_key_label.setText('反代访问口令')
+            self.api_key.setPlaceholderText('默认 sk-shanghaitech-genai；只保留在内存')
+        else:
+            self.endpoint_label.setText('本机接口')
+            self.endpoint.setPlaceholderText('http://127.0.0.1:11434/v1 或 http://127.0.0.1:1234/v1')
+            self.api_key_label.setText('访问口令 / Key')
+            self.api_key.setPlaceholderText('普通本机可留空；只保留在内存')
+
     def preset_changed(self, _index):
         provider = self.current_provider()
         self.provider = provider
@@ -206,7 +249,19 @@ class ConversationDialog(QDialog):
         self.migration_notice = ''
         pending = self.model_busy
         self.invalidate_models()
-        endpoint = DEFAULT_GENAI_ENDPOINT if provider == 'genai' else DEFAULT_LOCAL_ENDPOINT
+        self._update_provider_labels(provider)
+        if provider == 'genai':
+            endpoint = DEFAULT_GENAI_ENDPOINT
+        elif provider == 'deepseek':
+            endpoint = DEEPSEEK_DEFAULT_ENDPOINT
+        elif provider == 'custom':
+            endpoint = CUSTOM_DEFAULT_ENDPOINT
+        elif provider == 'lan':
+            endpoint = LAN_DEFAULT_ENDPOINT
+        elif provider == 'remote':
+            endpoint = REMOTE_DEFAULT_ENDPOINT
+        else:
+            endpoint = DEFAULT_LOCAL_ENDPOINT
         self.endpoint.setText(endpoint)
         self.api_key.setText(GENAI_DEFAULT_API_KEY if provider == 'genai' else '')
         if provider == 'genai':
@@ -214,6 +269,12 @@ class ConversationDialog(QDialog):
             # default; an old GPT/unknown name never survives the switch.
             self.model.setText(GENAI_DEFAULT_MODEL)
             self.session.model = GENAI_DEFAULT_MODEL
+        elif provider == 'deepseek':
+            self.model.setText(DEEPSEEK_DEFAULT_MODEL)
+            self.session.model = DEEPSEEK_DEFAULT_MODEL
+        elif provider in ('lan', 'remote'):
+            self.model.setText(REMOTE_DEFAULT_MODEL)
+            self.session.model = REMOTE_DEFAULT_MODEL
         else:
             self.model.clear()
             self.session.model = ''
@@ -225,9 +286,24 @@ class ConversationDialog(QDialog):
                 '已切换到上科大 GenAI 反代，默认模型为 DeepSeek-V4.1-Flash。'
                 '需要时点击“获取模型”，查看已配置的国内开源模型。'
             )
+        elif provider == 'deepseek':
+            self.status.setText(
+                '已切换到 DeepSeek 官方 API（https://api.deepseek.com/v1 · 默认 deepseek-chat）。'
+                '请填写你的 DeepSeek API Key（仅保留在内存，不会写入存档）。'
+            )
+        elif provider == 'custom':
+            self.status.setText(
+                '已切换到自定义模型接口（学校 API / 第三方 OpenAI 兼容网关）。'
+                '请填入接口 URL、API Key（如有）及模型名，也可点击“获取模型”自动读取。'
+            )
+        elif provider in ('lan', 'remote'):
+            self.status.setText(
+                '已切换到远程显卡主机模式（支持不同局域网）。可填入穿透隧道 HTTPS 域名（如 https://xxx.trycloudflare.com/v1）、'
+                '异地组网 IP（如 Tailscale 100.x.x.x:11434/v1）或跨网段地址，默认模型 si-qwen2.5-3b-lang-lora:latest。'
+            )
         else:
             self.status.setText(
-                '已切换到普通本机模型。请填写自己部署的国内开源模型名称；不会连接学校服务。'
+                '已切换到普通本机模型。请填写自己部署的模型名称（Ollama 默认 11434 端口）；不会连接外网。'
             )
 
     def connection_edited(self, _text=''):
@@ -240,26 +316,40 @@ class ConversationDialog(QDialog):
     def fetch_models(self):
         if self.model_busy:
             return
+        provider = self.current_provider()
         try:
-            endpoint = local_endpoint(self.endpoint.text())
+            endpoint = endpoint_for_provider(provider, self.endpoint.text())
             api_key = self.api_key.text()
+            if provider == 'deepseek' and not api_key.strip():
+                raise ConversationError('使用 DeepSeek 官方 API 时，请先填写你的 DeepSeek API Key（sk-...）。')
         except ConversationError as exc:
             self.status.setText(str(exc)); return
         token = self.models_generation + 1
         self.models_generation = token
         self.model_busy = True
-        provider = self.current_provider()
         self.provider = provider
         self.models_request = (provider, endpoint)
         self.available_models = []
         try: self.clear_model_completer()
         except (RuntimeError, TypeError): pass
         self.get_models.setEnabled(False)
-        self.status.setText('正在向本机服务获取模型列表；不会发送对话。')
+        self.status.setText(
+            '正在向 DeepSeek 官方接口获取模型列表；不会发送对话。'
+            if provider == 'deepseek'
+            else ('正在向自定义接口获取模型列表；不会发送对话。'
+                  if provider == 'custom'
+                  else ('正在向远程显卡主机获取模型列表；不会发送对话。'
+                        if provider in ('lan', 'remote') else '正在向本机服务获取模型列表；不会发送对话。'))
+        )
 
         def work():
             try:
-                models, error = fetch_models_request(endpoint, api_key), ''
+                raw_models = (
+                    fetch_models_request(endpoint, api_key, provider=provider)
+                    if provider in ('deepseek', 'custom', 'lan', 'remote')
+                    else fetch_models_request(endpoint, api_key)
+                )
+                models, error = raw_models, ''
                 if not error and provider == 'genai':
                     # fetch_models stays a generic OpenAI-compatible protocol
                     # function.  The GenAI allow-list is applied here, in the
@@ -453,8 +543,8 @@ class ConversationDialog(QDialog):
         if self.busy: return
         try:
             text = self.input.toPlainText()
-            endpoint = local_endpoint(self.endpoint.text())
             provider = self.current_provider()
+            endpoint = endpoint_for_provider(provider, self.endpoint.text())
             # Enforce the model policy before saving any new configuration or
             # starting the worker thread.  Completion popups are only a hint;
             # a manually typed GPT/unknown GenAI name must be refused here.
@@ -467,6 +557,8 @@ class ConversationDialog(QDialog):
             profile = self.profile.toPlainText()
             if len(profile) > 2000: raise ConversationError('管理员偏好最多 2000 字。')
             api_key = self.api_key.text()
+            if provider == 'deepseek' and not api_key.strip():
+                raise ConversationError('使用 DeepSeek 官方 API 时，请先填写你的 DeepSeek API Key（sk-...）。')
             self.provider = provider
             self.session.provider = provider
             self.session.endpoint, self.session.model, self.session.profile = endpoint, model, profile
@@ -484,7 +576,13 @@ class ConversationDialog(QDialog):
         generation = self.generation
 
         def work():
-            try: reply, error = request_reply(endpoint, model, messages, api_key), ''
+            try:
+                reply = (
+                    request_reply(endpoint, model, messages, api_key, provider=provider)
+                    if provider in ('deepseek', 'custom', 'lan', 'remote')
+                    else request_reply(endpoint, model, messages, api_key)
+                )
+                error = ''
             except ConversationError as exc: reply, error = '', str(exc)
             except Exception: reply, error = '', '对话暂时未能完成，请重试。'
             try: self.completed.emit(generation, reply, error)

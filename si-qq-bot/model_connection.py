@@ -659,7 +659,17 @@ class ModelConnection:
             requested_chars = requested_char_count(
                 messages, require_creation=True
             )
-            messages, sources = enrich(messages, search_enabled=search_enabled)
+            target_name = router_config.text_model if router_config.enabled else snapshot.model
+            include_style_demo = not (
+                snapshot.provider == LOCAL_PROVIDER
+                and isinstance(target_name, str)
+                and target_name.lower().startswith(('si-qwen2.5-', 'si-qwen2.5vl-'))
+            )
+            messages, sources = enrich(
+                messages,
+                search_enabled=search_enabled,
+                include_style_demo=include_style_demo,
+            )
             from media_support import attach_pending
             messages = attach_pending(messages, local_enabled=snapshot.provider == LOCAL_PROVIDER)
         from model_router import select_route

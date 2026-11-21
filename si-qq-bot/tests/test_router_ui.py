@@ -14,12 +14,12 @@ class RouterUiTests(unittest.TestCase):
             try:
                 self.assertFalse(window.router_switch.isChecked())
                 self.assertFalse(window._model_connection._router_config.enabled)
-                ok,_=window._apply_model_connection(mc.LOCAL_PROVIDER,'http://127.0.0.1:11434/v1','si-qwen3.5:9b','')
+                ok,_=window._apply_model_connection(mc.LOCAL_PROVIDER,'http://127.0.0.1:11434/v1','si-qwen2.5-3b-lang-lora:latest','')
                 self.assertTrue(ok)
                 window.router_switch.setChecked(True)
                 self.assertTrue(window._model_connection._router_config.enabled)
                 self.assertIn('本地分流',window.model_connection_status.text())
-                self.assertEqual(window._model_connection._router_config.vision_model,'si-qwen3.5:9b')
+                self.assertEqual(window._model_connection._router_config.vision_model,'si-qwen2.5vl-3b-lora:latest')
                 window.legacy_vision_switch.setChecked(True)
                 self.assertEqual(window._model_connection._router_config.vision_model,'si-qwen2.5vl:7b')
                 self.assertIn('Qwen2.5VL',window.model_connection_status.text())
@@ -27,7 +27,7 @@ class RouterUiTests(unittest.TestCase):
                 window.router_switch.setChecked(False)
                 self.assertFalse(window._model_connection._router_config.enabled)
                 self.assertFalse(window.legacy_vision_switch.isEnabled())
-                self.assertIn('si-qwen3.5',window.model_connection_status.text())
+                self.assertIn('si-qwen2.5-3b-lang-lora',window.model_connection_status.text())
             finally:window.close();window.deleteLater();app.processEvents()
 
     def test_remote_provider_cannot_be_redirected_by_switch(self):
