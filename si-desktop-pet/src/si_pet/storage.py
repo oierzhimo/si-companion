@@ -13,7 +13,8 @@ DEFAULTS = {
     'bubbles':True, 'outline':False, 'shadow':True,
     'quiet_mode':False, 'auto_dock':True,
     'hide_fullscreen':True,
-    'voice_enabled':False, 'voice_volume':65, 'voice_profile_id':'06332768',
+    'voice_enabled':False, 'voice_auto_headphone':True, 'voice_blocked_games':'',
+    'voice_volume':65, 'voice_profile_id':'06332768',
     'bottom_offset':0, 'auto_start':False, 'focus_minutes':25,
     'affinity':0, 'snacks':0, 'pats':0, 'focus_sessions':0,
     'mood':85, 'last_x':None, 'last_y':None, 'history':[],
@@ -57,6 +58,7 @@ class Store:
         for k,v in DEFAULTS.items():
             if isinstance(v,bool): self.values[k]=self.values[k] if isinstance(self.values[k],bool) else v
         if not isinstance(self.values['voice_profile_id'],str):self.values['voice_profile_id']=DEFAULTS['voice_profile_id']
+        if not isinstance(self.values.get('voice_blocked_games',''),str):self.values['voice_blocked_games']=''
         if not isinstance(self.values['history'],list): self.values['history']=[]
         self.values['history']=self.values['history'][-100:]
 
@@ -189,6 +191,8 @@ class Store:
 
     def __getitem__(self,key): return self.values[key]
     def __setitem__(self,key,value): self.values[key]=value
+    def __contains__(self,key): return key in self.values
+    def get(self,key,default=None): return self.values.get(key,default)
     def save(self):
         self.path.parent.mkdir(parents=True,exist_ok=True)
         temp=self.path.with_suffix('.tmp')

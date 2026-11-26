@@ -81,16 +81,28 @@ class VoiceClient:
 
     def render(self,text,profile_id):
         text=text.strip();profile_id=profile_id.strip()
-        if not text or len(text)>120:raise ValueError('speech text must contain 1–120 characters')
+        if not text or len(text)>2400:raise ValueError('speech text must contain 1–2400 characters')
         if not profile_id:raise VoiceUnavailable('请先设置 VoiceStudio 声线 ID')
         if not self.profile_exists(profile_id):raise VoiceUnavailable('选定的声线不在当前 VoiceStudio 中')
-        digest=hashlib.sha256(f'v1\0{profile_id}\0{text}'.encode('utf-8')).hexdigest()
+        from .speech_sfx import assemble_speech_and_sfx,build_speech_plan
+        plan=build_speech_plan(text)
+        plain_single=(len(plan)==1 and plan[0].kind=='tts' and len(text)<=120 and plan[0].value==text)
+        cache_tag='v1' if plain_single else 'v2-sfx'
+        digest=hashlib.sha256(f'{cache_tag}\0{profile_id}\0{text}'.encode('utf-8')).hexdigest()
         path=self.cache_dir/f'{digest}.wav'
         if path.is_file():
             try:validate_wav(path.read_bytes());return path
             except VoiceUnavailable:path.unlink(missing_ok=True)
-        form=urllib.parse.urlencode({'text':text,'profile_id':profile_id,'language':'Chinese','engine':'audiocpp'}).encode('utf-8')
-        payload=self._request('/generate',form);validate_wav(payload)
+        def _synth_span(span_text):
+            form=urllib.parse.urlencode({'text':span_text,'profile_id':profile_id,'language':'Chinese','engine':'audiocpp'}).encode('utf-8')
+            chunk_payload=self._request('/generate',form);validate_wav(chunk_payload)
+            return chunk_payload
+        if plain_single:
+            payload=_synth_span(text)
+        else:
+            try:payload=assemble_speech_and_sfx(text,_synth_span,max_total_bytes=19_500_000)
+            except ValueError as exc:raise VoiceUnavailable(str(exc)) from exc
+            validate_wav(payload)
         self.cache_dir.mkdir(parents=True,exist_ok=True)
         temp=path.with_suffix('.tmp');temp.write_bytes(payload);os.replace(temp,path)
         files=sorted(self.cache_dir.glob('*.wav'),key=lambda p:p.stat().st_mtime,reverse=True)

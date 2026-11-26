@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from PySide6.QtCore import Qt,QPoint,QTimer,QRectF,QRect
-from PySide6.QtGui import QPainter,QColor,QPen,QCursor,QRegion
+from PySide6.QtGui import QPainter,QColor,QPen,QCursor,QRegion,QPolygonF
 from PySide6.QtWidgets import QWidget,QLabel,QMenu,QApplication
 from .companion import CONTACT_OPTIONS
 from .theme import menu_stylesheet
@@ -18,25 +18,60 @@ class Bubble(QWidget):
         self.setWindowFlags(Qt.WindowType.ToolTip|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint|Qt.WindowType.WindowTransparentForInput)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.avatar=QLabel(self);self.avatar.setFixedSize(32,32);self.avatar.hide()
         self.text=QLabel(self);self.text.setWordWrap(True)
-        self.text.setStyleSheet('color:#f4fff8;background:transparent;font:14px "Microsoft YaHei UI";')
-        self.resize(310,100)
+        self.text.setStyleSheet('color:#f4f2ea;background:transparent;font:13px "Microsoft YaHei UI";')
+        self.resize(324,104)
+        self._fade=1.0;self._base_opacity=1.0
         self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.timeout.connect(self.hide)
+        self._fade_timer=QTimer(self);self._fade_timer.timeout.connect(self._step_fade)
+    def _step_fade(self):
+        self._fade=min(1.0,self._fade+0.14)
+        super().setWindowOpacity(self._base_opacity*self._fade)
+        if self._fade>=1.0:self._fade_timer.stop()
+    def setWindowOpacity(self,opacity):
+        self._base_opacity=float(opacity)
+        super().setWindowOpacity(self._base_opacity*self._fade)
     def speak(self,text,pet):
-        self.text.setText(text);self.text.setFixedWidth(270);self.text.adjustSize()
-        self.resize(310,self.text.height()+36);self.text.move(20,16)
+        from .speech_sfx import clean_bubble_text
+        display_text=clean_bubble_text(text) or text
+        pix=pet.ctrl.sprites.portrait('happy',32) if hasattr(pet.ctrl.sprites,'portrait') else None
+        has_av=pix is not None and not pix.isNull()
+        if has_av:
+            self.avatar.setPixmap(pix);self.avatar.move(14,14);self.avatar.show()
+            tx,tw=54,252
+        else:
+            self.avatar.hide();tx,tw=20,270
+        self.text.setText(display_text);self.text.setFixedWidth(tw);self.text.adjustSize()
+        body_h=max(48 if has_av else 36,self.text.height()+28)
+        self.resize(tx+tw+18,body_h+10)
+        self.text.move(tx,14 if not has_av or self.text.height()>24 else 20)
+        self._fade=0.50;self._base_opacity=pet.windowOpacity()
+        super().setWindowOpacity(self._base_opacity*self._fade)
         self.follow(pet);self.show();self.raise_();self.timer.start(4800)
+        self._fade_timer.start(22)
     def paintEvent(self,event):
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(QColor('#95c6ac'),1.5));p.setBrush(QColor('#183b35'))
-        p.drawRoundedRect(QRectF(2,2,self.width()-4,self.height()-4),16,16)
+        body=QRectF(2,2,self.width()-4,self.height()-11)
+        p.setPen(QPen(QColor('#c4a052'),1.5));p.setBrush(QColor('#1d312a'))
+        p.drawRoundedRect(body,15,15)
+        cx=self.width()/2.0
+        tail=QPolygonF([QPointF_safe(cx-7,body.bottom()-0.5),QPointF_safe(cx,self.height()-2.0),QPointF_safe(cx+7,body.bottom()-0.5)])
+        p.setPen(Qt.PenStyle.NoPen);p.drawPolygon(tail)
+        p.setPen(QPen(QColor('#c4a052'),1.5))
+        p.drawLine(QPointF_safe(cx-7,body.bottom()),QPointF_safe(cx,self.height()-2.0))
+        p.drawLine(QPointF_safe(cx+7,body.bottom()),QPointF_safe(cx,self.height()-2.0))
     def follow(self,pet):
         screen=QApplication.screenAt(pet.geometry().center()) or QApplication.primaryScreen()
         g=screen.availableGeometry()
         x=max(g.left()+8,min(g.right()-self.width()-8,pet.x()+(pet.width()-self.width())//2))
-        y=max(g.top()+8,pet.y()+round(28*pet.ctrl.store['scale'])-self.height())
+        y=max(g.top()+8,pet.y()+round(24*pet.ctrl.store['scale'])-self.height())
         y=min(g.bottom()-self.height()-8,y)
         self.move(x,y)
+
+def QPointF_safe(x,y):
+    from PySide6.QtCore import QPointF
+    return QPointF(x,y)
 
 class PetWindow(QWidget):
     def __init__(self,ctrl,open_panel):
@@ -71,7 +106,7 @@ class PetWindow(QWidget):
             # centre was valid. Re-clamp after every scale/DPI resize.
             if self.ctrl.scenes:self.ctrl.clamp_recovery()
         self.timer.setInterval(round(1000/cfg['fps']))
-        self.setWindowOpacity(.62 if self.ctrl.focus_end or cfg['quiet_mode'] else 1.0)
+        self.setWindowOpacity(.88 if self.ctrl.focus_end or cfg['quiet_mode'] else 1.0)
         self.bubble.setWindowOpacity(self.windowOpacity())
         if self.ctrl.hidden:self._cancel_drag();self.hide();self.bubble.hide()
         self.update()
@@ -112,9 +147,23 @@ class PetWindow(QWidget):
         painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         s=self.ctrl.store['scale'];state,index=self.ctrl.animation()
         pix=self.ctrl.sprites.pixmap(state,index,s,self.devicePixelRatioF())
-        if self.ctrl.store['shadow'] and self.ctrl.physics.body.support:
-            painter.setBrush(QColor(10,30,25,38));painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QRectF(62*s,197*s,68*s,7*s))
+        if self.ctrl.store['shadow']:
+            b=self.ctrl.physics.body
+            if b.support:
+                shadow_scale,shadow_alpha=1.0,42
+            else:
+                floors=[p.top-b.y for p in self.ctrl.physics.platforms if p.left<=b.x<=p.right and p.top>=b.y]
+                dist=min(floors) if floors else 999.0
+                shadow_scale=max(0.0,1.0-dist/(210.0*s))
+                shadow_alpha=round(38*shadow_scale*shadow_scale)
+            if shadow_alpha>2:
+                sw=68*s*max(0.45,shadow_scale);sh=7*s*max(0.55,shadow_scale)
+                sx=96*s-sw/2;sy=197*s
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(12,24,20,round(shadow_alpha*0.55)))
+                painter.drawEllipse(QRectF(sx-4*s,sy-1*s,sw+8*s,sh+2*s))
+                painter.setBrush(QColor(12,24,20,shadow_alpha))
+                painter.drawEllipse(QRectF(sx,sy,sw,sh))
         if self.ctrl.store['outline'] or self.underMouse() and not self.ctrl.store['clickthrough']:
             tinted=self.ctrl.sprites.outline(state,index,s,self.devicePixelRatioF());painter.setOpacity(.65)
             for dx,dy in [(-2,0),(2,0),(0,-2),(0,2)]:painter.drawPixmap(dx,dy,tinted)
@@ -162,17 +211,19 @@ class PetWindow(QWidget):
     def menu(self):
         menu=QMenu();menu.setStyleSheet(menu_stylesheet())
         menu.addAction('祀 · 陪伴面板',self.open_panel);menu.addSeparator()
-        for text,action in [('散步','walk'),('坐下','sit'),('躺下休息','sleep'),('跳一下','jump'),('招招手','wave'),('灵光一闪','special')]:
-            menu.addAction(text,lambda checked=False,a=action:self.ctrl.perform(a))
         menu.addAction('摸摸头',self.ctrl.pat);menu.addAction('投喂点心',self.ctrl.feed)
         contact=menu.addMenu('和祀说一句')
         for title,topic in CONTACT_OPTIONS:
             contact.addAction(title,lambda checked=False,t=topic:self.ctrl.contact(t))
+        poses=menu.addMenu('日常姿态')
+        for text,action in [('散步','walk'),('坐下','sit'),('打个盹','sleep'),('跳一下','jump'),('招招手','wave'),('灵光一闪','special'),('认真端详','review')]:
+            poses.addAction(text,lambda checked=False,a=action:self.ctrl.perform(a))
         focus_action=menu.addAction('结束专注' if self.ctrl.focus_end else '陪我专注',lambda:self.ctrl.focus())
         menu.addAction('靠边坐好',self.ctrl.dock)
         menu.addSeparator()
+        modes=menu.addMenu('显示与模式设置')
         for text,key in [('自动散步','wander'),('安静陪伴','quiet_mode'),('站在窗口边缘','window_edges'),('手动模式（方向键）','manual'),('鼠标穿透（托盘恢复）','clickthrough')]:
-            action=menu.addAction(text);action.setCheckable(True);action.setChecked(self.ctrl.store[key])
+            action=modes.addAction(text);action.setCheckable(True);action.setChecked(self.ctrl.store[key])
             action.setData(key)
             action.toggled.connect(lambda checked,k=key:self.option(k,checked))
         menu.addAction('找回祀 / 恢复鼠标交互',self.recover)
@@ -180,7 +231,7 @@ class PetWindow(QWidget):
         menu.addAction('退出桌宠',request_exit)
         def sync_checks():
             focus_action.setText('结束专注' if self.ctrl.focus_end else '陪我专注')
-            for action in menu.actions():
+            for action in modes.actions():
                 if action.data() in {'wander','quiet_mode','window_edges','manual','clickthrough'}:
                     action.blockSignals(True);action.setChecked(self.ctrl.store[action.data()]);action.blockSignals(False)
         menu.aboutToShow.connect(sync_checks)

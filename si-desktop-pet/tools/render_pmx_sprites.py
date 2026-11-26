@@ -257,16 +257,17 @@ void main() {
         lightEnv *= mix(1.0, 0.85, underBangs * isSkin) * mix(1.0, 0.88, underJawEdge * isSkin);
         outCol = mix(base, base * lightEnv, isSkin * 0.96);
     } else if (uMatKind == 1) {
-        // Body (Mat[7]): keep legs/shoulders/neck skin tone & leg shading identical, restore clear cerulean-cobalt blue sleeves
+        // Body (Mat[7]): keep legs/shoulders/neck skin tone & leg shading clean,
+        // and harmonize blue sleeves to Endfield muted slate-grey-blue with ink depth.
         float isWarmSkin = smoothstep(-0.02, 0.06, raw.r - raw.b) * smoothstep(0.35, 0.55, lum);
         vec3 naturalSkin = adjust_sat(clamp(raw * 1.06 + vec3(0.010, 0.006, 0.008), 0.0, 0.930), 0.90);
-        vec3 cobaltSleeve = adjust_sat(clamp(raw * vec3(0.86, 1.02, 1.19), 0.0, 1.0), 1.26);
-        vec3 base = mix(cobaltSleeve, naturalSkin, isWarmSkin);
+        vec3 slateSleeve = adjust_sat(clamp(raw * vec3(0.76, 0.84, 0.89), 0.0, 1.0), 0.56);
+        vec3 base = mix(slateSleeve, naturalSkin, isWarmSkin);
 
         float contact = mix(1.0, 0.82, underChin * isWarmSkin)
                       * mix(1.0, 0.85, collarSeam * isWarmSkin)
                       * mix(1.0, 0.82, underSkirt * isWarmSkin);
-        vec3 blueEnv = mix(vec3(0.72, 0.80, 0.93), vec3(1.04, 1.05, 1.07), volumeRamp);
+        vec3 blueEnv = mix(vec3(0.71, 0.77, 0.82), vec3(1.00, 1.02, 1.03), volumeRamp);
         float zAtten = mix(depthAtten, 1.0, 0.35 * isWarmSkin);
         outCol = base * mix(blueEnv, sharedSkinEnv, isWarmSkin) * contact * mix(1.0, zAtten, 0.75);
     } else if (uMatKind == 3) {
@@ -855,22 +856,19 @@ class GLPMXRenderer:
         yaw_deg: float = 0.0,
         pitch_deg: float = 0.0,
         world_y_shift: float = 0.0,
-        y_view_range: float = 24.4,
+        y_view_range: float = 24.0,
         bottom_px: float = BASELINE_BOTTOM_PX,
+        anchor_y: float | None = None,
+        draw_shadow: bool = True,
     ) -> Image.Image:
         self.ctx.makeCurrent(self.surface)
         skinned, skinned_n = self.model.skin(bone_rots, bone_trans, morph_weights)
-        # Auto-ground lowest vertex onto y=0 so every pose meets BASELINE_BOTTOM_PX cleanly
+        # Auto-ground lowest vertex onto y=0 (unless caller provides explicit bust anchor_y)
         min_y = float(skinned[:, 1].min())
-        skinned[:, 1] += (-min_y) + world_y_shift
-
-        # Update dynamic pos + normal VBOs
-        flat_pos = skinned[self.flat_idx].astype(np.float32).tobytes()
-        flat_n = skinned_n[self.flat_idx].astype(np.float32).tobytes()
-        self.pos_vbo.bind()
-        self.pos_vbo.write(0, flat_pos, len(flat_pos))
-        self.norm_vbo.bind()
-        self.norm_vbo.write(0, flat_n, len(flat_n))
+        if anchor_y is None:
+            skinned[:, 1] += (-min_y) + world_y_shift
+        else:
+            skinned[:, 1] += (-float(anchor_y)) + world_y_shift
 
         # Build realistic 3D portrait perspective MVP (FOV=24°) so torso/legs/sleeves have natural depth:
         #   Camera sits at z = -cam_dist looking toward +Z, centered around target_y.
@@ -887,7 +885,8 @@ class GLPMXRenderer:
         R_cam = rot_xyz(pitch_deg, yaw_deg, 0.0)
         M_pivot = np.eye(4, dtype=np.float32)
         M_pivot[:3, :3] = R_cam
-        pivot = np.array([0.0, 9.5, 0.0], dtype=np.float32)
+        pivot_y = 9.5 if anchor_y is None else (y_view_range * 0.45)
+        pivot = np.array([0.0, pivot_y, 0.0], dtype=np.float32)
         M_pivot[:3, 3] = pivot - R_cam @ pivot
 
         # View matrix: translate world by (0, -target_y, +cam_dist) so camera is at origin looking along +Z (z_cam > 0)
@@ -899,7 +898,7 @@ class GLPMXRenderer:
         ], dtype=np.float32)
 
         # Perspective projection for +Z forward: x_ndc = (f/aspect)*x/z, y_ndc = f*y/z, z_ndc = (near+far)/(far-near) + (-2*near*far)/(far-near)/z
-        z_near, z_far = 15.0, 110.0
+        z_near, z_far = 8.0, 110.0
         a_z = (z_far + z_near) / (z_far - z_near)
         b_z = -(2.0 * z_far * z_near) / (z_far - z_near)
         P = np.array([
@@ -910,6 +909,29 @@ class GLPMXRenderer:
         ], dtype=np.float32)
         mv = V @ M_pivot
         mvp = P @ mv
+
+        # Projective floor alignment for grounded poses (sitting/sleeping shoes move closer in -Z,
+        # which perspective otherwise drops below BASELINE_BOTTOM_PX down to canvas edge y=1664).
+        if anchor_y is None and abs(world_y_shift) < 0.05:
+            low_band = np.where(skinned[:, 1] < 1.6)[0]
+            if len(low_band):
+                pts = skinned[low_band]
+                hom = np.concatenate([pts, np.ones((len(pts), 1), dtype=np.float32)], axis=1)
+                clip = (mvp @ hom.T).T
+                ndc_y = clip[:, 1] / np.maximum(clip[:, 3], 1e-4)
+                min_idx = int(np.argmin(ndc_y))
+                min_ndc_y = float(ndc_y[min_idx])
+                if abs(min_ndc_y - bottom_ndc) > 1e-4:
+                    dy_world = (bottom_ndc - min_ndc_y) * float(clip[min_idx, 3]) / f
+                    skinned[:, 1] += dy_world
+
+        # Update dynamic pos + normal VBOs
+        flat_pos = skinned[self.flat_idx].astype(np.float32).tobytes()
+        flat_n = skinned_n[self.flat_idx].astype(np.float32).tobytes()
+        self.pos_vbo.bind()
+        self.pos_vbo.write(0, flat_pos, len(flat_pos))
+        self.norm_vbo.bind()
+        self.norm_vbo.write(0, flat_n, len(flat_n))
         from PySide6.QtGui import QMatrix4x4, QVector3D, QVector4D
         qm = QMatrix4x4(*mvp.flatten().tolist())
         qmv = QMatrix4x4(*mv.flatten().tolist())
@@ -1069,7 +1091,8 @@ class GLPMXRenderer:
             fg_slope = np.where(is_hair, 0.80, 0.35)
             fg_step = np.where(g_alpha & a_nb, np.clip((d_nb - depth - d_thresh) * fg_slope, 0.0, 1.0), 0.0)
             mat_step = np.where(g_alpha & a_nb & is_hair & (mat_id != m_nb), 0.48, 0.0)
-            edge = np.maximum(edge, np.maximum(fg_step, mat_step))
+            sil_step = np.where(g_alpha & (~a_nb) & ((mat_id == 2) | (mat_id == 3)), 0.38, 0.0)
+            edge = np.maximum(edge, np.maximum(np.maximum(fg_step, mat_step), sil_step))
 
         # 3x3 gentle Gaussian smoothing on G-buffer edge so aliased gbuf pixels never introduce staircases onto 8x MSAA!
         ep = np.pad(edge, ((1, 1), (1, 1)), mode='edge')
@@ -1079,19 +1102,21 @@ class GLPMXRenderer:
             + (ep[0:-2, 0:-2] + ep[0:-2, 2:] + ep[2:, 0:-2] + ep[2:, 2:]) * 0.05
         )
         is_hair_px = (mat_id == 3)[:, :, None]
+        is_cloth_px = (mat_id == 2)[:, :, None]
         ink_rgb = np.where(
             is_hair_px,
             np.array([48.0, 68.0, 60.0], dtype=np.float32),
-            np.array([46.0, 54.0, 64.0], dtype=np.float32),
+            np.array([44.0, 52.0, 60.0], dtype=np.float32),
         )
-        ink_alpha = (edge_smooth * np.where(is_hair_px[:, :, 0], 0.18, 0.0))[:, :, None]
-        valid = (arr[:, :, 3:4] > 20)
+        contour_weight = np.where(is_hair_px[:, :, 0], 0.20, np.where(is_cloth_px[:, :, 0], 0.14, 0.0))
+        ink_alpha = (edge_smooth * contour_weight)[:, :, None]
+        valid = (arr[:, :, 3:4] > 210)
         arr_f = arr[:, :, :3].astype(np.float32)
         arr_f = np.where(valid, arr_f * (1.0 - ink_alpha) + ink_rgb * ink_alpha, arr_f)
         arr[:, :, :3] = np.clip(arr_f, 0, 255).astype(np.uint8)
 
         # Dual soft sole shadows consistent with Front-Slightly-Above key light (centered, softly trailing slightly back)
-        if abs(world_y_shift) < 0.05:
+        if draw_shadow and anchor_y is None and abs(world_y_shift) < 0.05:
             y0_scan = max(0, int(bottom_px) - 24)
             y1_scan = min(self.height, int(bottom_px) + 4)
             mid_x = self.width // 2
@@ -1184,6 +1209,101 @@ def merge_rots(base: Dict[str, Tuple[float, float, float]], overrides: Dict[str,
     return out
 
 
+def seated_skirt_drape(p: float, pitch_scale: float = 1.0) -> Dict[str, Tuple[float, float, float]]:
+    """Compute progressive skirt, flap, and front-ribbon rotations for seated/curled poses.
+
+    ``上半身`` pitches backward while ``左足``/``右足`` pitch ~74-76 deg forward, so without
+    lifting the front dress (``裙子_*``) and front straps (``L/R_ribbonA``) over the lap,
+    the thighs slice straight through them.  Upper hip tiers pitch forward over the thighs,
+    while lower hem tiers drape back downward over the knees so the lap stays naturally covered.
+    """
+    r: Dict[str, Tuple[float, float, float]] = {}
+    s = p * pitch_scale
+
+    # Upper tiers lift forward over thigh top; lower tiers (7-10) curve downward over the lap/knees
+    tier_pitch = {
+        0: 0.03,
+        1: 0.11,
+        2: 0.25,
+        3: 0.28,
+        4: 0.21,
+        5: 0.12,
+        6: -0.04,
+        7: -0.14,
+        8: -0.19,
+        9: -0.18,
+        10: -0.12,
+    }
+    tier_flare = {
+        2: 0.26,
+        3: 0.34,
+        4: 0.25,
+        5: 0.15,
+    }
+    # Front and side columns (0=front center; 1..5=left; 15..11=right)
+    # (lift_deg, drape_deg, flare_deg, side_sign: 0=center, +1=left/+X, -1=right/-X)
+    col_cfg = {
+        0:  (46.0, 66.0,  0.0,  0),
+        1:  (72.0, 52.0,  4.0,  1),
+        15: (72.0, 52.0,  4.0, -1),
+        2:  (80.0, 48.0,  8.0,  1),
+        14: (80.0, 48.0,  8.0, -1),
+        3:  (72.0, 38.0, 13.0,  1),
+        13: (72.0, 38.0, 13.0, -1),
+        4:  (44.0, 22.0, 15.0,  1),
+        12: (44.0, 22.0, 15.0, -1),
+        5:  (18.0,  8.0,  7.0,  1),
+        11: (18.0,  8.0,  7.0, -1),
+    }
+
+    for col, (lift_deg, drape_deg, max_flare, side) in col_cfg.items():
+        for tier, pf in tier_pitch.items():
+            ff = tier_flare.get(tier, 0.0)
+            rx = (lift_deg * pf * s) if pf >= 0 else (drape_deg * pf * s)
+            rz = side * max_flare * ff * p
+            ry = -side * (max_flare * 0.35) * ff * p if pf > 0 else 0.0
+            r[f'裙子_{tier}_{col}'] = (rx, ry, rz)
+
+    # Inner front/side dress flap helpers (carry minor weights, keep aligned with front skirt)
+    for side_prefix, side in (('L', 1), ('R', -1)):
+        r[f'{side_prefix}_skirtA_01_jnt'] = (16.0 * s, 0.0, side * 3.0 * p)
+        r[f'{side_prefix}_skirtA_02_jnt'] = (34.0 * s, -side * 3.0 * p, side * 5.0 * p)
+        r[f'{side_prefix}_skirtA_03_jnt'] = (20.0 * s, 0.0, side * 2.0 * p)
+        r[f'{side_prefix}_skirtA_04_jnt'] = (-24.0 * s, 0.0, 0.0)
+
+        r[f'{side_prefix}_skirtB_01_jnt'] = (9.0 * s, 0.0, side * 6.0 * p)
+        r[f'{side_prefix}_skirtB_02_jnt'] = (22.0 * s, 0.0, side * 8.0 * p)
+        r[f'{side_prefix}_skirtB_03_jnt'] = (10.0 * s, 0.0, side * 4.0 * p)
+
+        # Two vertical dark-blue front ribbons resting on top of the dress and draping down over thighs
+        rib_pitch = {
+            1: 3.0,
+            2: 8.0,
+            3: 14.0,
+            4: 18.0,
+            5: 17.0,
+            6: 10.0,
+            7: 4.0,
+            8: -5.0,
+            9: -9.0,
+            10: -10.0,
+            11: -9.0,
+            12: -7.0,
+            13: -4.0,
+        }
+        rib_flare = {
+            3: 2.5,
+            4: 3.5,
+            5: 3.0,
+            6: 1.5,
+        }
+        for k, rp in rib_pitch.items():
+            rf = rib_flare.get(k, 0.0)
+            r[f'{side_prefix}_ribbonA_01_jnt_{k}'] = (rp * s, -side * rf * 0.4 * p, side * rf * p)
+
+    return r
+
+
 def build_state_specs() -> Dict[str, List[dict]]:
     """Return frame pose definitions for all 14 states in assets/animations.json."""
     base = base_drape()
@@ -1263,150 +1383,166 @@ def build_state_specs() -> Dict[str, List[dict]]:
             frames.append({'rots': r, 'morphs': {'口角上げ': 0.35}, 'yaw': yaw})
         specs[side] = frames
 
-    # 4. waving (4 frames, settles on frame 3) -> graceful cheer wave, sleeve & ribbon draping straight down
-    wave_angles = [(-35.0, 22.0, -1.5), (-52.0, 18.0, -4.0), (-62.0, 28.0, -3.5), (-56.0, 20.0, -4.5)]
+    # 4. waving (4 frames, alternating gentle wrist wave near shoulder height, loops smoothly)
+    wave_frames = [
+        (-28.0, 92.0, -30.0, -16.0, -2.5),
+        (-31.0, 98.0, -36.0,  18.0, -4.5),
+        (-29.0, 94.0, -31.0, -18.0, -3.5),
+        (-30.0, 96.0, -33.0,   6.0, -4.0),
+    ]
     specs['waving'] = []
-    for i, (arm_z, elbow_z, head_tilt) in enumerate(wave_angles):
-        counter = -arm_z * 1.15
+    for i, (arm_z, elbow_x, elbow_z, wrist_y, head_tilt) in enumerate(wave_frames):
         w_ov = {
-            '右肩': (0.0, 0.0, -10.0),
-            '右腕': (18.0, 8.0, arm_z),
-            '右ひじ': (28.0, 0.0, -elbow_z),
-            '右腕捩': (0.0, -25.0, 0.0),
-            '右手首': (0.0, -15.0, 0.0),
-            '左腕': (3.0, 0.0, -34.0),
-            '頭': (-2.0, -4.0, head_tilt),
-            'R_sleeveD_01_jnt_1': (12.0, 0.0, counter * 0.50),
-            'R_sleeveD_01_jnt_2': (6.0, 0.0, counter * 0.35),
-            'R_sleeveD_01_jnt_3': (4.0, 0.0, counter * 0.25),
-            'ribbonC_01_jnt_1': (0.0, 0.0, counter * 0.45 + 15.0),
-            'ribbonC_01_jnt_2': (0.0, 0.0, counter * 0.35 + 10.0),
-            'ribbonC_01_jnt_3': (0.0, 0.0, counter * 0.25),
+            '右肩': (0.0, 0.0, -6.0),
+            '右腕': (26.0, -14.0, arm_z),
+            '右ひじ': (elbow_x, 0.0, elbow_z),
+            '右腕捩': (0.0, -16.0, 0.0),
+            '右手首': (0.0, wrist_y, wrist_y * 0.45),
+            '左腕': (4.0, 0.0, -30.0),
+            '頭': (-3.0, -5.0, head_tilt),
+            'R_sleeveD_01_jnt_1': (18.0, 0.0, 26.0),
+            'R_sleeveD_01_jnt_2': (10.0, 0.0, 18.0),
+            'R_sleeveD_01_jnt_3': (8.0, 0.0, 12.0),
+            'R_sleeveD_01_jnt_5': (6.0, 0.0, 10.0),
+            'ribbonC_01_jnt_1': (6.0, 0.0, 26.0),
+            'ribbonC_01_jnt_2': (4.0, 0.0, 16.0),
+            'ribbonC_01_jnt_3': (0.0, 0.0, 8.0),
         }
         r = merge_rots(base, w_ov)
-        specs['waving'].append({'rots': r, 'morphs': {'笑い': 0.35 if i >= 1 else 0.15, '口角上げ': 0.45}})
+        specs['waving'].append({'rots': r, 'morphs': {'笑い': 0.30 if i >= 1 else 0.18, 'にこり': 0.30, '口角上げ': 0.50}})
 
-    # 5. sitting (4 frames, settles on frame 3) -> knees bent, cape & tail swept gently back so shoes sit flat at bottom
+    # 5. sitting (4 frames, settles on frame 3) -> graceful together-knees sit, zero skirt clipping, compact tail
     sit_prog = [0.28, 0.58, 0.86, 1.0]
     specs['sitting'] = []
     for p in sit_prog:
-        r = merge_rots(base, {
+        sit_ov = {
             '腰': (-4.0 * p, 0.0, 0.0),
             '上半身': (-4.0 * p, -6.0 * p, 0.0),
-            '頭': (3.0 * p, 6.0 * p, -3.5 * p),
-            '左足': (74.0 * p, -6.0 * p, 4.0 * p),
-            '右足': (74.0 * p, 6.0 * p, -4.0 * p),
+            '頭': (3.0 * p, 6.0 * p, -4.0 * p),
+            '左足': (74.0 * p, -2.5 * p, 1.8 * p),
+            '右足': (74.0 * p, 2.5 * p, -1.8 * p),
             '左ひざ': (-80.0 * p, 0.0, 0.0),
             '右ひざ': (-80.0 * p, 0.0, 0.0),
             '左足首': (-12.0 * p, 0.0, 0.0),
             '右足首': (-12.0 * p, 0.0, 0.0),
-            '左腕': (22.0 * p + 3.0, 12.0 * p, -32.0),
-            '右腕': (22.0 * p + 3.0, -12.0 * p, 32.0),
-            '左ひじ': (48.0 * p + 8.0, 0.0, -18.0 * p),
-            '右ひじ': (48.0 * p + 8.0, 0.0, 18.0 * p),
-            # Sweep cape sleeves gently backward/upward when seated so they rest at seat level instead of dangling past soles
-            'L_sleeveD_01_jnt_1': (-24.0 * p + 6.0, 0.0, 32.0),
+            '左腕': (22.0 * p + 3.0, 14.0 * p, -30.0),
+            '右腕': (22.0 * p + 3.0, -14.0 * p, 30.0),
+            '左ひじ': (52.0 * p + 8.0, 0.0, -22.0 * p),
+            '右ひじ': (52.0 * p + 8.0, 0.0, 22.0 * p),
+            # Sweep cape sleeves gently backward/upward when seated so they rest at seat level cleanly
+            'L_sleeveD_01_jnt_1': (-24.0 * p + 6.0, 0.0, 28.0),
             'L_sleeveD_01_jnt_5': (-16.0 * p, 0.0, 0.0),
-            'R_sleeveD_01_jnt_1': (-24.0 * p + 6.0, 0.0, -32.0),
+            'R_sleeveD_01_jnt_1': (-24.0 * p + 6.0, 0.0, -28.0),
             'R_sleeveD_01_jnt_5': (-16.0 * p, 0.0, 0.0),
-            'tail_jnt2': (2.0, -14.0, 0.0),
-            'tail_jnt4': (-6.0 * p + 6.0, -18.0, 0.0),
-            'tail_jnt6': (-10.0 * p + 4.0, -16.0, 0.0),
-            'tail_jnt8': (-8.0 * p, -10.0, 0.0),
-        })
-        specs['sitting'].append({'rots': r, 'morphs': {'口角上げ': 0.25 * p}})
+            'tail_jnt2': (2.0, -6.0, 0.0),
+            'tail_jnt4': (-6.0 * p + 4.0, -9.0, 0.0),
+            'tail_jnt6': (-10.0 * p + 3.0, -8.0, 0.0),
+            'tail_jnt8': (-8.0 * p, -6.0, 0.0),
+        }
+        sit_ov.update(seated_skirt_drape(p, pitch_scale=1.0))
+        r = merge_rots(base, sit_ov)
+        specs['sitting'].append({'rots': r, 'morphs': {'にこり': 0.25 * p, '口角上げ': 0.32 * p}})
 
-    # 6. sleeping (4 frames, settles on frame 3) -> peaceful curled seated doze resting squarely at bottom
+    # 6. sleeping (4 frames, settles on frame 3) -> cozy curled/leaning seated doze (nap)
     slp_prog = [0.35, 0.65, 0.90, 1.0]
     specs['sleeping'] = []
     for p in slp_prog:
-        r = merge_rots(base, {
+        slp_ov = {
             '腰': (-6.0 * p, 0.0, 0.0),
-            '上半身': (-8.0 * p, 0.0, 4.0 * p),
-            '上半身2': (-5.0 * p, 0.0, 4.0 * p),
-            '首': (-5.0 * p, 0.0, 5.0 * p),
-            '頭': (-6.0 * p, -4.0 * p, 9.0 * p),
+            '上半身': (-8.0 * p, 0.0, 5.0 * p),
+            '上半身2': (-6.0 * p, 0.0, 5.0 * p),
+            '首': (-6.0 * p, 0.0, 6.0 * p),
+            '頭': (-9.0 * p, -7.0 * p, 14.0 * p),
             'L_hairE_jnt1': (10.0 * p, 0.0, -10.0),
             'R_hairE_jnt1': (10.0 * p, 0.0, 10.0),
-            '左足': (76.0 * p, -8.0 * p, 5.0 * p),
-            '右足': (76.0 * p, 6.0 * p, -5.0 * p),
+            '左足': (76.0 * p, -3.0 * p, 2.2 * p),
+            '右足': (76.0 * p, 3.0 * p, -2.2 * p),
             '左ひざ': (-86.0 * p, 0.0, 0.0),
             '右ひざ': (-86.0 * p, 0.0, 0.0),
-            '左腕': (26.0 * p, 14.0 * p, -34.0),
-            '右腕': (26.0 * p, -14.0 * p, 34.0),
-            '左ひじ': (56.0 * p, 0.0, -24.0 * p),
-            '右ひじ': (56.0 * p, 0.0, 24.0 * p),
-            'L_sleeveD_01_jnt_1': (-26.0 * p + 6.0, 0.0, 32.0),
+            '左腕': (26.0 * p, 16.0 * p, -32.0),
+            '右腕': (26.0 * p, -16.0 * p, 32.0),
+            '左ひじ': (60.0 * p, 0.0, -26.0 * p),
+            '右ひじ': (60.0 * p, 0.0, 26.0 * p),
+            'L_sleeveD_01_jnt_1': (-26.0 * p + 6.0, 0.0, 28.0),
             'L_sleeveD_01_jnt_5': (-18.0 * p, 0.0, 0.0),
-            'R_sleeveD_01_jnt_1': (-26.0 * p + 6.0, 0.0, -32.0),
+            'R_sleeveD_01_jnt_1': (-26.0 * p + 6.0, 0.0, -28.0),
             'R_sleeveD_01_jnt_5': (-18.0 * p, 0.0, 0.0),
-            'tail_jnt2': (2.0, -14.0, 0.0),
-            'tail_jnt4': (-6.0 * p + 6.0, -18.0, 0.0),
-            'tail_jnt6': (-10.0 * p + 4.0, -16.0, 0.0),
-            'tail_jnt8': (-8.0 * p, -10.0, 0.0),
-        })
-        specs['sleeping'].append({'rots': r, 'morphs': {'なごみ': min(1.0, 0.4 + 0.6 * p)}, 'yaw': -18.0 * p})
+            'tail_jnt2': (2.0, -6.0, 0.0),
+            'tail_jnt4': (-6.0 * p + 4.0, -9.0, 0.0),
+            'tail_jnt6': (-10.0 * p + 3.0, -8.0, 0.0),
+            'tail_jnt8': (-8.0 * p, -6.0, 0.0),
+        }
+        slp_ov.update(seated_skirt_drape(p, pitch_scale=1.08))
+        r = merge_rots(base, slp_ov)
+        specs['sleeping'].append({'rots': r, 'morphs': {'なごみ': min(1.0, 0.45 + 0.55 * p), '口角上げ': 0.15 * p}, 'yaw': -16.0 * p})
 
-    # 7. jumping (5 frames, settles on frame 4 airborne)
+    # 7. jumping (5 frames: crouch anticipation -> bent-knee leap -> soft landing; never crops horns)
+    # (lift, body_x, l_hip, l_knee, r_hip, r_knee, arm_raise, sleeve_z, smile)
     jmp_params = [
-        (0.5, 10.0, -28.0, -10.0),
-        (2.0, -8.0, -32.0, -30.0),
-        (2.8, -12.0, -38.0, -38.0),
-        (2.5, -8.0, -34.0, -32.0),
-        (2.0, -5.0, -26.0, -26.0),
+        (0.0,   9.0, 24.0, -44.0, 24.0, -44.0, -18.0, 14.0, 0.15),
+        (0.65, -8.0, 32.0, -62.0, 42.0, -76.0, -34.0, 20.0, 0.40),
+        (1.05, -11.0, 36.0, -70.0, 48.0, -86.0, -40.0, 22.0, 0.55),
+        (0.80, -7.0, 30.0, -58.0, 38.0, -72.0, -34.0, 18.0, 0.45),
+        (0.15,  5.0, 20.0, -36.0, 22.0, -38.0, -24.0, 15.0, 0.25),
     ]
     specs['jumping'] = []
-    for lift, body_x, knee_x, arm_raise in jmp_params:
-        r = merge_rots(base, {
+    for lift, body_x, l_hip, l_knee, r_hip, r_knee, arm_raise, slv_z, smile in jmp_params:
+        j_ov = {
             '上半身': (body_x, 0.0, 0.0),
-            '頭': (-body_x * 0.5, 0.0, -2.0),
-            '左足': (16.0, 0.0, 5.0),
-            '右足': (24.0, 0.0, -5.0),
-            '左ひざ': (knee_x, 0.0, 0.0),
-            '右ひざ': (knee_x * 1.15, 0.0, 0.0),
-            '左腕': (8.0, 0.0, arm_raise),
-            '右腕': (8.0, 0.0, -arm_raise),
-            'L_sleeveD_01_jnt_1': (10.0, 0.0, 28.0),
-            'R_sleeveD_01_jnt_1': (10.0, 0.0, -28.0),
-        })
-        specs['jumping'].append({'rots': r, 'morphs': {'口角上げ': 0.35}, 'y_shift': lift})
+            '頭': (-body_x * 0.55, 0.0, -2.5),
+            '左足': (l_hip, 0.0, 3.0),
+            '右足': (r_hip, 0.0, -3.0),
+            '左ひざ': (l_knee, 0.0, 0.0),
+            '右ひざ': (r_knee, 0.0, 0.0),
+            '左足首': (-14.0, 0.0, 0.0),
+            '右足首': (-16.0, 0.0, 0.0),
+            '左腕': (10.0, 0.0, arm_raise),
+            '右腕': (10.0, 0.0, -arm_raise),
+            '左ひじ': (28.0, 0.0, -10.0),
+            '右ひじ': (28.0, 0.0, 10.0),
+            'L_sleeveD_01_jnt_1': (8.0, 0.0, slv_z),
+            'R_sleeveD_01_jnt_1': (8.0, 0.0, -slv_z),
+        }
+        j_ov.update(seated_skirt_drape(0.42, pitch_scale=0.95))
+        r = merge_rots(base, j_ov)
+        specs['jumping'].append({'rots': r, 'morphs': {'笑い': smile * 0.7, '口角上げ': smile}, 'y_shift': lift})
 
-    # 8. review (6 frames, settles on frame 5) -> observant head tilt, right hand raised toward chin/collarbone
+    # 8. review (6 frames, settles on frame 5) -> observant tilted head + chin gesture
     specs['review'] = []
     for i in range(6):
         p = min(1.0, (i + 1) / 4.0)
         r = merge_rots(base, {
-            '上半身': (-2.0 * p, -5.0 * p, 0.0),
-            '頭': (4.0 * p, 6.0 * p, -6.0 * p),
-            '右腕': (32.0 * p + 3.0, -22.0 * p, 32.0),
-            '右ひじ': (86.0 * p + 10.0, 0.0, 46.0 * p),
-            '右手首': (0.0, 10.0 * p, 14.0 * p),
+            '上半身': (-2.5 * p, -8.0 * p, 2.0 * p),
+            '頭': (5.0 * p, 10.0 * p, -10.0 * p),
+            '右腕': (34.0 * p + 3.0, -24.0 * p, 30.0),
+            '右ひじ': (90.0 * p + 10.0, 0.0, 48.0 * p),
+            '右手首': (0.0, 12.0 * p, 16.0 * p),
             '右人指１': (0.0, 0.0, 15.0 * p),
             '右中指１': (0.0, 0.0, 28.0 * p),
             '右中指２': (0.0, 0.0, 30.0 * p),
             '右薬指１': (0.0, 0.0, 35.0 * p),
             '右薬指２': (0.0, 0.0, 32.0 * p),
             '右小指１': (0.0, 0.0, 38.0 * p),
-            'R_sleeveD_01_jnt_1': (-12.0 * p + 6.0, 0.0, -28.0),
-            '左腕': (8.0, 4.0, -35.0),
+            'R_sleeveD_01_jnt_1': (-12.0 * p + 6.0, 0.0, -24.0),
+            '左腕': (8.0, 4.0, -33.0),
             '左ひじ': (20.0, 0.0, -10.0),
         })
-        specs['review'].append({'rots': r, 'morphs': {'じと目': 0.12}})
+        specs['review'].append({'rots': r, 'morphs': {'真面目': 0.45 * p, 'じと目': 0.25 * p}})
 
-    # 9. running (6 frames, settles on frame 5) -> mapped to "think" / "special"
+    # 9. running (6 frames, settles on frame 5) -> mapped to "think" / "special" (bright aha gesture!)
     specs['running'] = []
     for i in range(6):
         p = min(1.0, (i + 1) / 3.5)
-        aha = 1.0 if i >= 4 else 0.0
+        aha = 1.0 if i >= 3 else 0.0
         r = merge_rots(base, {
-            '上半身': (0.0, 5.0 * p, 0.0),
-            '頭': (-4.0 * aha + 5.0 * (1 - aha), -8.0 * p, 6.0 * p),
-            '左腕': (30.0 * p + 3.0, 20.0 * p, -30.0),
-            '左ひじ': (82.0 * p + 10.0, 0.0, -42.0 * p),
-            'L_sleeveD_01_jnt_1': (-12.0 * p + 6.0, 0.0, 28.0),
-            '右腕': (10.0, 0.0, 34.0 - 8.0 * aha),
+            '上半身': (-2.0 * p, 8.0 * p, -2.5 * p),
+            '頭': (-6.0 * aha + 5.0 * (1 - aha), -11.0 * p, 9.0 * p),
+            '左腕': (34.0 * p + 4.0, 22.0 * p, -30.0),
+            '左ひじ': (88.0 * p + 10.0, 0.0, -46.0 * p),
+            'L_sleeveD_01_jnt_1': (-14.0 * p + 6.0, 0.0, 24.0),
+            '右腕': (12.0, 0.0, 34.0 - 8.0 * aha),
         })
-        m = {'笑い': 0.32, '口角上げ': 0.42} if aha else {'真面目': 0.25}
+        m = {'笑い': 0.45, 'にこり': 0.35, '口角上げ': 0.60} if aha else {'真面目': 0.35}
         specs['running'].append({'rots': r, 'morphs': m})
 
     # 10. waiting (6 frames) -> gentle idle weight shift + soft blink
@@ -1424,19 +1560,22 @@ def build_state_specs() -> Dict[str, List[dict]]:
             m['まばたき'] = 0.9
         specs['waiting'].append({'rots': r, 'morphs': m})
 
-    # 11. failed (8 frames) -> slightly flustered / hands raised in front
+    # 11. failed (8 frames) -> distinct flustered defensive pose on chat/connection errors
     specs['failed'] = []
     for i in range(8):
         s = math.sin(i / 8.0 * 2.0 * math.pi)
         r = merge_rots(base, {
-            '上半身': (-4.0, s * 5.0, s * 2.0),
-            '頭': (-5.0, -s * 6.0, 5.0),
-            '左腕': (14.0, 0.0, -24.0),
-            '右腕': (14.0, 0.0, 24.0),
-            '左ひじ': (42.0, 0.0, -18.0),
-            '右ひじ': (42.0, 0.0, 18.0),
+            '腰': (5.0, 0.0, 0.0),
+            '上半身': (-8.0, s * 7.0, s * 3.0),
+            '頭': (-7.0, -s * 8.0, 9.0),
+            '左腕': (20.0, 12.0, -24.0),
+            '右腕': (20.0, -12.0, 24.0),
+            '左ひじ': (72.0, 0.0, -32.0),
+            '右ひじ': (72.0, 0.0, 32.0),
+            '左足': (8.0, 0.0, 2.0),
+            '右足': (8.0, 0.0, -2.0),
         })
-        specs['failed'].append({'rots': r, 'morphs': {'困る': 0.85, 'ω': 0.35}})
+        specs['failed'].append({'rots': r, 'morphs': {'困る': 1.0, 'ω': 0.55, '口角下げ': 0.30}})
 
     # 12. look (16 frames, index 0..15 clockwise from top: 0=UP, 4=RIGHT(+X), 8=DOWN, 12=LEFT(-X))
     specs['look'] = []
@@ -1459,11 +1598,106 @@ def build_state_specs() -> Dict[str, List[dict]]:
     return specs
 
 
+def render_portraits_and_icon(model: PMXModel, samples: int = 8) -> List[Path]:
+    """Render 512x512 half-body expression portraits and a crisp multi-size si.ico."""
+    from PIL import ImageDraw
+
+    base = base_drape()
+    p_ren = GLPMXRenderer(model, width=512, height=512, samples=samples)
+    out_dir = ASSETS_DIR / 'portraits'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    portrait_specs = {
+        'neutral': {
+            'rots': merge_rots(base, {'頭': (-2.5, -2.0, -1.0)}),
+            'morphs': {},
+            'yaw': 0.0,
+        },
+        'happy': {
+            'rots': merge_rots(base, {'上半身': (-2.0, 4.0, 0.0), '頭': (-3.5, -5.0, -4.0)}),
+            'morphs': {'笑い': 0.28, 'にこり': 0.35, '口角上げ': 0.62},
+            'yaw': 4.0,
+        },
+        'blush': {
+            'rots': merge_rots(base, {'上半身': (2.0, -3.0, 2.0), '頭': (5.0, 5.0, 6.0)}),
+            'morphs': {'なごみ': 0.60, 'にこり': 0.45, '口角上げ': 0.45},
+            'yaw': -4.0,
+        },
+        'thinking': {
+            'rots': merge_rots(base, {
+                '上半身': (-2.0, -6.0, 0.0),
+                '頭': (4.0, 8.0, -7.0),
+                '右腕': (34.0, -24.0, 30.0),
+                '右ひじ': (92.0, 0.0, 48.0),
+            }),
+            'morphs': {'真面目': 0.45, 'じと目': 0.25},
+            'yaw': -6.0,
+        },
+        'sleepy': {
+            'rots': merge_rots(base, {'上半身': (-4.0, 0.0, 3.0), '頭': (-5.0, -5.0, 9.0)}),
+            'morphs': {'なごみ': 1.0, '口角上げ': 0.15},
+            'yaw': -8.0,
+        },
+        'troubled': {
+            'rots': merge_rots(base, {'上半身': (-5.0, 4.0, 2.0), '頭': (-6.0, -6.0, 7.0)}),
+            'morphs': {'困る': 1.0, 'ω': 0.55, '口角下げ': 0.25},
+            'yaw': 4.0,
+        },
+    }
+
+    written: List[Path] = []
+    for name, sp in portrait_specs.items():
+        im = p_ren.render(
+            sp['rots'],
+            morph_weights=sp['morphs'],
+            yaw_deg=sp['yaw'],
+            y_view_range=8.4,
+            bottom_px=512.0,
+            anchor_y=14.9,
+            draw_shadow=False,
+        )
+        dest = out_dir / f'{name}.png'
+        im.save(dest, optimize=True)
+        written.append(dest)
+
+    # Render a tighter head/horn zoom for crisp 16-256px taskbar/tray badge icon
+    head_im = p_ren.render(
+        merge_rots(base, {'頭': (-2.0, -4.0, -1.5)}),
+        morph_weights={'にこり': 0.25, '口角上げ': 0.35},
+        yaw_deg=5.0,
+        y_view_range=6.5,
+        bottom_px=505.0,
+        anchor_y=16.5,
+        draw_shadow=False,
+    )
+    badge = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(badge)
+    draw.rounded_rectangle((18, 18, 494, 494), radius=116, fill=(28, 36, 34, 255), outline=(202, 162, 78, 255), width=18)
+    draw.ellipse((46, 46, 466, 466), fill=(40, 56, 51, 255), outline=(122, 164, 143, 180), width=6)
+
+    mask = Image.new('L', (512, 512), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((28, 28, 484, 484), radius=108, fill=255)
+    head_clipped = Image.composite(head_im, Image.new('RGBA', (512, 512), (0, 0, 0, 0)), mask)
+    badge.alpha_composite(head_clipped)
+
+    ico_path = ASSETS_DIR / 'si.ico'
+    badge.save(
+        ico_path,
+        format='ICO',
+        sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (24, 24), (16, 16)],
+    )
+    badge_png = out_dir / 'icon_badge.png'
+    badge.resize((128, 128), Image.Resampling.LANCZOS).save(badge_png, optimize=True)
+    written.extend([ico_path, badge_png])
+    return written
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='Render 祀 3D MMD sprites for si-desktop-pet.')
     parser.add_argument('--pmx', type=Path, default=PMX_DEFAULT)
     parser.add_argument('--out-dir', type=Path, default=ASSETS_DIR / 'hd')
     parser.add_argument('--preview', type=Path, default=None, help='Save 6-pose comparison preview image instead of full export.')
+    parser.add_argument('--portraits-only', action='store_true', help='Render portraits and icon only.')
     parser.add_argument('--samples', type=int, default=8)
     args = parser.parse_args()
 
@@ -1476,20 +1710,25 @@ def main() -> int:
     model = PMXModel(args.pmx)
     print(f'Loaded {args.pmx.name} ({len(model.positions)} verts, {len(model.faces)} tris) in {time.time() - t0:.2f}s')
 
+    if args.portraits_only:
+        written = render_portraits_and_icon(model, samples=args.samples)
+        print(f'Rendered {len(written)} portrait/icon assets into {ASSETS_DIR}')
+        return 0
+
     renderer = GLPMXRenderer(model, width=MASTER_W, height=MASTER_H, samples=args.samples)
     specs = build_state_specs()
 
     if args.preview is not None:
         picks = [
             ('idle/00', specs['idle'][0]),
-            ('walk-right/02', specs['walk-right'][2]),
-            ('waving/03', specs['waving'][3]),
+            ('jumping/02', specs['jumping'][2]),
+            ('waving/01', specs['waving'][1]),
             ('sitting/03', specs['sitting'][3]),
             ('sleeping/03', specs['sleeping'][3]),
-            ('review/05', specs['review'][5]),
+            ('failed/02', specs['failed'][2]),
         ]
         tile_w, tile_h = 512, 554
-        sheet = Image.new('RGBA', (tile_w * 3, tile_h * 2), (238, 244, 240, 255))
+        sheet = Image.new('RGBA', (tile_w * 3, tile_h * 2), (242, 240, 234, 255))
         for idx, (label, spec) in enumerate(picks):
             im = renderer.render(
                 spec['rots'],
@@ -1527,11 +1766,15 @@ def main() -> int:
                 yaw_deg=spec.get('yaw', 0.0),
                 world_y_shift=spec.get('y_shift', 0.0),
             )
+            bbox = im.getchannel('A').getbbox()
+            if bbox is None or bbox[1] <= 0 or bbox[3] >= MASTER_H:
+                raise RuntimeError(f'Framing out of bounds for {f_rel}: bbox={bbox}')
             dest = ASSETS_DIR / f_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             im.save(dest, optimize=True)
             count += 1
-    print(f'Rendered {count} frames at {MASTER_W}x{MASTER_H} in {time.time() - t1:.2f}s')
+    p_written = render_portraits_and_icon(model, samples=args.samples)
+    print(f'Rendered {count} frames at {MASTER_W}x{MASTER_H} and {len(p_written)} portrait/icon assets in {time.time() - t1:.2f}s')
     return 0
 
 

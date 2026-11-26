@@ -1,3 +1,4 @@
+import datetime
 import math
 import random
 import time
@@ -26,8 +27,9 @@ class Controller(QObject):
         self.presentation_suppressed=False
         self._paused_for_visibility=False
         self.next_check_in=time.monotonic()+random.uniform(1200,2400)
-        self.walk_distance=0;self.idle_next=time.monotonic()+random.uniform(3,7)
+        self.walk_distance=0;self.idle_next=time.monotonic()+random.uniform(3.2,6.5)
         self.idle_clip=None;self.idle_until=0;self.idle_last=None
+        self._gaze_idx=None;self._gaze_angle=None
         self.keys=set();self.last_save=time.monotonic();self.started=time.monotonic()
         self.scenes=list(QGuiApplication.screens())
         self.refresh_platforms()
@@ -167,7 +169,8 @@ class Controller(QObject):
         if topic=='quiet':
             self.store['quiet_mode']=True;self.store.save();self._dock(True);self.quiet_dock=True
         elif not self.focus_end:
-            self.perform('sit' if topic=='tired' else 'review',announce=False)
+            pose={'create':'special','stuck':'review','tired':'sit','painting':'special'}.get(topic,'review')
+            self.perform(pose,announce=False)
         reply=self.companion.choose(topic)
         self.contact_reply.emit(reply)
         self.say(reply,True)
@@ -190,9 +193,17 @@ class Controller(QObject):
     def gaze(self):
         b=self.physics.body;cursor=QCursor.pos();scale=self.store['scale']
         dx=cursor.x()-b.x;dy=cursor.y()-(b.y-125*scale)
-        if abs(dx)+abs(dy)<40 or dx*dx+dy*dy>(650*scale)**2:return 'idle',None
+        if abs(dx)+abs(dy)<40 or dx*dx+dy*dy>(650*scale)**2:
+            self._gaze_idx=None;self._gaze_angle=None
+            return 'idle',None
         angle=(math.degrees(math.atan2(dx,-dy))+360)%360
-        return 'look',int((angle+11.25)//22.5)%16
+        if self._gaze_idx is not None and self._gaze_angle is not None:
+            diff=abs(((angle-self._gaze_angle+180)%360)-180)
+            if diff<10.0:
+                return 'look',self._gaze_idx
+        idx=int((angle+11.25)//22.5)%16
+        self._gaze_idx=idx;self._gaze_angle=angle
+        return 'look',idx
 
     def _window_turn_margin(self,speed,dt,current_vx=0.0):
         """Space needed to reverse smoothly before a narrow window ledge ends.
@@ -285,8 +296,24 @@ class Controller(QObject):
         elif self.focus_end or self.store['quiet_mode']:
             self.action='sit';self.sleeping=False;velocity=0
         elif now>=self.decision_at:
-            actions=['idle','walk','sit','sleep','special'] if self.store['wander'] else ['idle','sit','special']
-            weights=[61,19,15,3,2] if self.store['wander'] else [75,22,3]
+            hour=datetime.datetime.now().hour
+            mood=float(self.store['mood'])
+            affinity=float(self.store['affinity'])
+            late_night=(hour>=22 or hour<5)
+            cheerful=(mood>=75 or affinity>=15)
+            if self.store['wander']:
+                actions=['idle','walk','sit','sleep','special','wave']
+                weights=[
+                    54 if not late_night else 46,
+                    19 if not late_night else 11,
+                    15,
+                    10 if late_night else (5 if mood<40 else 3),
+                    4 if cheerful else 2,
+                    3 if cheerful else 1,
+                ]
+            else:
+                actions=['idle','sit','special','sleep']
+                weights=[70,22,4 if cheerful else 2,6 if late_night else 2]
             self.action=random.choices(actions,weights)[0]
             self.direction=random.choice([-1,1]);self.decision_at=now+random.uniform(12,30)
         if not self.store['manual'] and self.action=='walk' and now>=self.override_until and not (self.focus_end or self.store['quiet_mode']):
@@ -317,7 +344,7 @@ class Controller(QObject):
         else:
             action=self.action
             if now>=self.override_until and action not in {'idle','walk','sit','sleep','special'}:action='idle'
-            state={'sit':'sitting','sleep':'sleeping','wave':'waving','think':'running','special':'running','review':'review','jump':'idle'}.get(action,'idle')
+            state={'sit':'sitting','sleep':'sleeping','wave':'waving','think':'running','special':'running','review':'review','failed':'failed','jump':'idle'}.get(action,'idle')
             self.set_state(state)
         if impact>900:self.say('落地。下次先打个招呼？')
         # Recover after display removal or an externally moved window leaving virtual desktop.
@@ -339,21 +366,27 @@ class Controller(QObject):
             return self.state,int(self.walk_distance/stride*count)%count
         if self.state=='idle':
             if now>=self.idle_next:
-                choices=['blink','waiting','review']
+                choices=['blink','breathe','waiting','review']
                 choices=[c for c in choices if c!=self.idle_last]
-                self.idle_clip=random.choices(choices,[7 if c=='blink' else 1 for c in choices])[0]
+                weight_map={'blink':7,'breathe':5,'waiting':1,'review':1}
+                self.idle_clip=random.choices(choices,[weight_map[c] for c in choices])[0]
                 self.idle_last=self.idle_clip;self.idle_started=now
-                duration=.32 if self.idle_clip=='blink' else sum(self.sprites.durations[self.idle_clip])/1000
-                self.idle_until=now+duration;self.idle_next=self.idle_until+random.uniform(9,22)
+                if self.idle_clip=='blink':duration=.32
+                elif self.idle_clip=='breathe':duration=1.30
+                else:duration=sum(self.sprites.durations[self.idle_clip])/1000
+                self.idle_until=now+duration;self.idle_next=self.idle_until+random.uniform(3.8,7.8)
             if now<self.idle_until:
                 if self.idle_clip=='blink':return 'idle',min(3,1+int((now-self.idle_started)/.11))
+                if self.idle_clip=='breathe':
+                    seq=(0,4,5,4,0)
+                    return 'idle',seq[min(len(seq)-1,int((now-self.idle_started)/.26))]
                 return self.idle_clip,self.sprites.index(self.idle_clip,(now-self.idle_started)*1000)
         if self.state=='idle' and self.store['cursor_follow'] and not self.sleeping:
             state,index=self.gaze()
             if state=='look':return 'look',index
         if self.state=='idle':return 'idle',0
-        # Non-walking gestures play once and settle instead of looping noisily.
-        if self.state in {'waving','review','running','jumping','sitting','sleeping'}:
+        # Non-walking one-shot gestures settle on final frame; waving and failed loop smoothly.
+        if self.state in {'review','running','jumping','sitting','sleeping'}:
             total=sum(self.sprites.durations[self.state])
             return self.state,self.sprites.index(self.state,min(elapsed,max(0,total-1)))
         return self.state,self.sprites.index(self.state,elapsed)

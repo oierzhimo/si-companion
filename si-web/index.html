@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小祀 · Si Companion — 桌面陪伴伙伴 (v2.1.2)</title>
+  <meta name="description" content="小祀（SiDesktopPet v2.1.2）是一款面向新手的开源桌面陪伴伙伴，支持 Windows 绿色便携运行、Soul Engine V1.2 数字人格、耳机/游戏感知智能语音（含拟声词与动作音效）及跨端实时聊天同步。" />
+  <link rel="icon" href="assets/si.ico" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Sticky Top Navigation -->
+  <header class="navbar" id="top">
+    <div class="container nav-inner">
+      <a href="#top" class="brand" aria-label="Si Companion Home">
+        <img src="assets/icon_badge.png" alt="小祀图标" class="brand-icon" width="34" height="34" />
+        <span class="brand-text">
+          <strong data-i18n="brand.name">小祀 · Si Companion</strong>
+          <span class="brand-tag">v2.1.2</span>
+        </span>
+      </a>
+
+      <nav class="nav-links" id="navLinks" aria-label="Main navigation">
+        <a href="#intro" data-i18n="nav.intro">项目简介</a>
+        <a href="#sync" data-i18n="nav.sync">实时同步</a>
+        <a href="#download" data-i18n="nav.download">下载</a>
+        <a href="#guide" data-i18n="nav.guide">新手教程</a>
+        <a href="#interactions" data-i18n="nav.interactions">互动玩法</a>
+        <a href="#faq" data-i18n="nav.faq">常见问题</a>
+        <a href="#feedback" data-i18n="nav.feedback">意见反馈</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button id="langToggle" class="pill-btn" type="button" aria-label="Switch Language">
+          <span class="pill-icon" aria-hidden="true">🌐</span>
+          <span id="langLabel">English</span>
+        </button>
+        <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle dark or light theme" title="切换浅色/深色主题">
+          <span id="themeIcon" aria-hidden="true">🌙</span>
+        </button>
+        <button id="menuToggle" class="icon-btn mobile-only" type="button" aria-label="Open navigation menu" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <div class="eyebrow">
+            <span class="dot"></span>
+            <span data-i18n="hero.badge">Windows 10/11 绿色便携版 · v2.1.2 全新发布</span>
+          </div>
+          <h1 data-i18n="hero.title">小祀 · 陪在你桌面上的灵动伙伴</h1>
+          <p class="hero-subtitle" data-i18n="hero.subtitle">
+            无需编程基础、无需安装 Python，解压双击就能把小祀请到桌面。v2.1.2 升级 3D 防穿模水墨金玉视觉、Soul Engine V1.2 数字人格，并在接入耳机且未开 Apex / 彩六等本地游戏时自动同步输出语音、拟声词与动作音效。
+          </p>
+
+          <div class="hero-cta">
+            <a href="#download" class="btn btn-primary">
+              <span aria-hidden="true">⬇</span>
+              <span data-i18n="hero.ctaDownload">立即下载 Windows 版 (v2.1.2)</span>
+            </a>
+            <a href="#sync" class="btn btn-secondary">
+              <span aria-hidden="true">✨</span>
+              <span data-i18n="hero.ctaSync">实时聊天与陪伴同步</span>
+            </a>
+          </div>
+
+          <ul class="trust-pills">
+            <li data-i18n="hero.pill1">✓ 免安装绿色解压即用</li>
+            <li data-i18n="hero.pill2">✓ 耳机感知 + 游戏自动静音 TTS</li>
+            <li data-i18n="hero.pill3">✓ API Key 仅留内存不写盘</li>
+            <li data-i18n="hero.pill4">✓ GPL-3.0 开源免费</li>
+          </ul>
+        </div>
+
+        <!-- Interactive Mascot Preview Card -->
+        <div class="hero-visual">
+          <div class="mascot-card">
+            <div class="mascot-header">
+              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="mascot-status" data-i18n="hero.previewTitle">实时形象预览 · 点下方按钮试试互动</span>
+            </div>
+
+            <div class="mascot-stage">
+              <div class="speech-bubble" id="mascotBubble" role="status" aria-live="polite">
+                （祀执笔轻轻落墨）哼，管理员，累了的话就先歇一小会儿吧。
+              </div>
+              <div class="mascot-avatar-wrap">
+                <img
+                  id="mascotImg"
+                  src="assets/happy.png"
+                  alt="小祀桌宠立绘"
+                  class="mascot-img"
+                  width="320"
+                  height="320"
+                />
+              </div>
+            </div>
+
+            <div class="mood-bar" role="group" aria-label="Character mood preview">
+              <button type="button" class="mood-btn active" data-mood="happy" data-i18n="mood.happy">摸摸头</button>
+              <button type="button" class="mood-btn" data-mood="neutral" data-i18n="mood.neutral">安静陪伴</button>
+              <button type="button" class="mood-btn" data-mood="blush" data-i18n="mood.blush">送点心</button>
+              <button type="button" class="mood-btn" data-mood="thinking" data-i18n="mood.thinking">聊画/思考</button>
+              <button type="button" class="mood-btn" data-mood="sleepy" data-i18n="mood.sleepy">犯困休息</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Brief Introduction & Core Features -->
+    <section class="section" id="intro">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="intro.kicker">项目简介</span>
+          <h2 data-i18n="intro.title">什么是 si_accompany（小祀桌宠 v2.1.2）？</h2>
+          <p class="section-desc" data-i18n="intro.desc">
+            小祀（Si Companion / si_accompany）是一个以《明日方舟：终末地》角色「祀」为形象的非官方开源同人桌面伙伴项目。主打低打扰、离线可用、界面清爽，并提供 Soul Engine V1.2 人格对话、智能语音音效与跨端数据同步。
+          </p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🎨</div>
+            <h3 data-i18n="feat1.title">3D 精修动作与防穿模升级</h3>
+            <p data-i18n="feat1.desc">v2.1.2 修复蹲坐裙摆穿模并重绘五种高清神态头像，支持自主散步、窗口顶边落脚、拖拽重力与十六方向眼神跟随。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🎧</div>
+            <h3 data-i18n="feat2.title">智能耳机语音 + 拟声词与动作声</h3>
+            <p data-i18n="feat2.desc">接入耳机且未打开 Apex、彩虹六号等本地游戏时默认同时输出语音与文本；支持「哼、咳咳、噗嗤」拟声词与执笔落墨、推茶盏、盖印章等动作音效。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">💬</div>
+            <h3 data-i18n="feat3.title">Soul Engine V1.2 数字人格与识图</h3>
+            <p data-i18n="feat3.desc">搭载专属微调人格模型，支持本机 Ollama 离线运行、DeepSeek 官方 API 与学校/第三方兼容接口，多模态窗口可直接拖入图片交流。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🌗</div>
+            <h3 data-i18n="feat4.title">水墨金玉深浅主题自适应</h3>
+            <p data-i18n="feat4.desc">面板、带头像气泡的聊天界面、可折叠连接抽屉与右键菜单自动跟随 Windows 浅色或深色模式切换高对比度配色。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔒</div>
+            <h3 data-i18n="feat5.title">数据本地保存，隐私安心</h3>
+            <p data-i18n="feat5.desc">亲密度、设置和对话记录全部存放在程序同目录的 data/ 文件夹中；API Key 仅留在运行内存，绝不写入硬盘。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🌐</div>
+            <h3 data-i18n="feat6.title">跨设备与广域网聊天数据同步</h3>
+            <p data-i18n="feat6.desc">支持 sync-v1 事件账本、局域网 TLS 配对、Android 预览包及网页端实时陪伴状态与对话历史双向同步。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Companion & Chat Data Sync Section -->
+    <section class="section section-alt" id="sync">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="sync.kicker">实时连接</span>
+          <h2 data-i18n="sync.title">小祀陪伴状态与聊天数据同步</h2>
+          <p class="section-desc" data-i18n="sync.desc">
+            实时同步本机桌宠的亲密度、心情、相伴手记与最近对话记录。通过广域网实时节点访问时，可直接在线和小祀互动或发送消息同步回桌面端。
+          </p>
+        </div>
+
+        <div class="sync-board">
+          <div class="sync-status-bar">
+            <div class="sync-badge-group">
+              <span class="sync-dot" id="syncDot"></span>
+              <strong id="syncModeLabel" data-i18n="sync.connecting">正在读取小祀同步状态…</strong>
+              <span class="sync-meta-text" id="syncUpdatedAt"></span>
+            </div>
+            <div class="sync-quick-actions">
+              <button type="button" class="pill-btn" id="syncPatBtn" data-i18n="sync.patBtn">👋 远程摸摸头</button>
+              <button type="button" class="pill-btn" id="syncSnackBtn" data-i18n="sync.snackBtn">🍵 送一份点心</button>
+              <button type="button" class="pill-btn" id="syncRefreshBtn" data-i18n="sync.refreshBtn">↻ 立即刷新</button>
+            </div>
+          </div>
+
+          <div class="sync-stats-grid">
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statAffinity">亲密度</span>
+              <strong class="sync-stat-val" id="statAffinity">--</strong>
+            </div>
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statMood">当前心情</span>
+              <strong class="sync-stat-val" id="statMood">--</strong>
+            </div>
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statPats">摸头次数</span>
+              <strong class="sync-stat-val" id="statPats">--</strong>
+            </div>
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statSnacks">投喂点心</span>
+              <strong class="sync-stat-val" id="statSnacks">--</strong>
+            </div>
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statFocus">专注完成</span>
+              <strong class="sync-stat-val" id="statFocus">--</strong>
+            </div>
+            <div class="sync-stat-card">
+              <span class="sync-stat-label" data-i18n="sync.statMinutes">相伴时长</span>
+              <strong class="sync-stat-val" id="statMinutes">--</strong>
+            </div>
+          </div>
+
+          <div class="sync-voice-banner" id="syncVoiceBanner">
+            <span aria-hidden="true">🎧</span>
+            <span id="syncVoiceText" data-i18n="sync.voiceDefault">智能语音策略：接入耳机且未运行本地游戏时默认语音+文本同步输出</span>
+          </div>
+
+          <div class="sync-columns">
+            <!-- Synced Chat Panel -->
+            <div class="sync-panel">
+              <div class="sync-panel-head">
+                <h3 data-i18n="sync.chatTitle">💬 同步对话记录（与桌面端互通）</h3>
+                <span class="badge badge-primary">Soul Engine V1.2</span>
+              </div>
+              <div class="sync-chat-log" id="syncChatLog" aria-live="polite"></div>
+              <form class="sync-chat-form" id="syncChatForm">
+                <input
+                  type="text"
+                  id="syncChatInput"
+                  maxlength="500"
+                  placeholder="在广域网实时节点直接和小祀说句话，会同步写入桌面端…"
+                  data-i18n-placeholder="sync.chatPlaceholder"
+                />
+                <button type="submit" class="btn btn-primary" id="syncChatSend" data-i18n="sync.chatSend">发送</button>
+              </form>
+              <div class="sync-hint" id="syncChatHint" data-i18n="sync.chatHint">
+                提示：实时隧道在线时可直接与本机小祀模型对话并双向同步；GitHub Pages 静态镜像展示最新同步快照。
+              </div>
+            </div>
+
+            <!-- Synced Companion Journal -->
+            <div class="sync-panel">
+              <div class="sync-panel-head">
+                <h3 data-i18n="sync.journalTitle">📔 相伴手记（最新动态）</h3>
+                <span class="badge" id="syncDeviceBadge">sync-v1</span>
+              </div>
+              <ul class="sync-journal-list" id="syncJournalList"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="section" id="download">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="dl.kicker">获取软件</span>
+          <h2 data-i18n="dl.title">下载小祀（si_accompany v2.1.2）</h2>
+          <p class="section-desc" data-i18n="dl.desc">
+            新手直接下载下方的 <strong>Windows 绿色便携版</strong> 即可，无需配置任何开发环境。
+          </p>
+        </div>
+
+        <!-- Primary Windows Download Card -->
+        <div class="download-hero-card">
+          <div class="dl-main">
+            <div class="dl-badges">
+              <span class="badge badge-primary" data-i18n="dl.recommended">新手推荐</span>
+              <span class="badge">Windows 10 / 11 (64-bit)</span>
+              <span class="badge">v2.1.2</span>
+            </div>
+            <h3 data-i18n="dl.winTitle">祀桌宠 · Windows 绿色便携版</h3>
+            <p class="dl-summary" data-i18n="dl.winDesc">
+              解压即用，内置完整运行环境、3D 防穿模精修动作帧组、立绘头像与中文指南。支持耳机/游戏感知智能语音（含拟声词与动作音效）、自适应深浅主题及多模型对话。
+            </p>
+            <div class="dl-meta">
+              <span><strong data-i18n="dl.fileLabel">文件名：</strong><code>SiDesktopPet-2.1.2-Windows-x64.zip</code></span>
+              <span><strong data-i18n="dl.sizeLabel">大小：</strong>~122 MB</span>
+            </div>
+
+            <div class="dl-actions">
+              <a
+                id="winDownloadBtn"
+                href="https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiDesktopPet-2.1.2-Windows-x64.zip"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-primary btn-lg"
+              >
+                <span aria-hidden="true">⬇</span>
+                <span data-i18n="dl.winBtn">下载 Windows 版 (v2.1.2)</span>
+              </a>
+              <a
+                id="repoBtn"
+                href="https://github.com/oierzhimo/si-companion"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-lg"
+              >
+                <span aria-hidden="true">📦</span>
+                <span data-i18n="dl.repoBtn">访问 GitHub 仓库</span>
+              </a>
+            </div>
+
+            <div class="checksum-box">
+              <span class="checksum-label">SHA-256:</span>
+              <code id="sha256Text">d070e1b63d46db3c644eeb15955efedd5f58717e110204fbf128fe4a381478db</code>
+              <button type="button" class="copy-mini-btn" id="copyShaBtn" data-i18n="dl.copy">复制</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Secondary Platforms -->
+        <div class="platform-grid">
+          <div class="platform-card">
+            <div class="platform-top">
+              <span class="platform-icon" aria-hidden="true">🤖</span>
+              <div>
+                <h4 data-i18n="dl.androidTitle">Android 预览版 (v0.1.3-preview)</h4>
+                <span class="platform-sub">SiCompanion-Android-0.1.3-preview.apk · ~18 MB</span>
+              </div>
+            </div>
+            <p data-i18n="dl.androidDesc">支持手机端基础陪伴、悬浮展示与局域网 TLS 配对同步（需配合 Windows 端协同预览模式使用，不适用于原生鸿蒙 5）。</p>
+            <a href="https://github.com/oierzhimo/si-companion/releases" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.androidLink">在 Releases 查看 Android 包 →</a>
+          </div>
+
+          <div class="platform-card">
+            <div class="platform-top">
+              <span class="platform-icon" aria-hidden="true">🧩</span>
+              <div>
+                <h4 data-i18n="dl.sourceTitle">HarmonyOS 5 工程预览 & 完整源码</h4>
+                <span class="platform-sub">GPL-3.0 · Python / Java / ArkTS</span>
+              </div>
+            </div>
+            <p data-i18n="dl.sourceDesc">面向开发者的完整仓库，包含桌面端源码、Soul Engine 数据构建、QQ 多模态原型、HarmonyOS 5 工程预览与打包脚本。</p>
+            <a href="https://github.com/oierzhimo/si-companion" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.sourceLink">浏览 GitHub 源码 →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Beginner Step-by-Step Guide -->
+    <section class="section section-alt" id="guide">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="guide.kicker">零基础教程</span>
+          <h2 data-i18n="guide.title">新手 4 步上手指南</h2>
+          <p class="section-desc" data-i18n="guide.desc">
+            第一次用绿色压缩包软件？跟着下面 4 个步骤一步一步操作，2 分钟就能让小祀出现在你的桌面上。
+          </p>
+        </div>
+
+        <ol class="steps-list">
+          <!-- Step 1 -->
+          <li class="step-card">
+            <div class="step-num" aria-hidden="true">1</div>
+            <div class="step-body">
+              <h3 data-i18n="step1.title">下载压缩包，并「完整解压」到普通文件夹</h3>
+              <p data-i18n="step1.desc">
+                点击上方的下载按钮获取 <code>SiDesktopPet-2.1.2-Windows-x64.zip</code>。下载完成后，<strong>右键点击该压缩包</strong> → 选择「全部解压缩」（或用 7-Zip / WinRAR 解压），解压到一个好找的位置，例如 <code>D:\SiDesktopPet</code>。
+              </p>
+              <div class="callout callout-warn">
+                <strong data-i18n="step1.warnTitle">⚠️ 新手最容易踩的坑：</strong>
+                <span data-i18n="step1.warnBody">请务必<strong>完整解压整个压缩包</strong>后再运行！不要在压缩包预览窗口里直接双击 EXE，也不要只把 EXE 单独拖到桌面，否则程序会找不到素材和运行库。</span>
+              </div>
+            </div>
+          </li>
+
+          <!-- Step 2 -->
+          <li class="step-card">
+            <div class="step-num" aria-hidden="true">2</div>
+            <div class="step-body">
+              <h3 data-i18n="step2.title">双击启动 <code>Si-DesktopPet.exe</code></h3>
+              <p data-i18n="step2.desc">
+                打开解压后的文件夹，找到带小祀图标的 <code>Si-DesktopPet.exe</code> 并双击运行。首次打开会同时显示「陪伴面板」和桌面上的小祀，离线摸头、投喂和专注计时立即可用！
+              </p>
+              <div class="callout callout-info">
+                <strong data-i18n="step2.tipTitle">💡 如果弹出蓝色的「Windows 已保护你的电脑」提示：</strong>
+                <span data-i18n="step2.tipBody">这是 Windows 对未购买商业签名的个人开源软件的常规提示。点击弹窗里的 <strong>「更多信息」</strong> → 再点击 <strong>「仍要运行」</strong> 即可正常启动。</span>
+              </div>
+            </div>
+          </li>
+
+          <!-- Step 3 -->
+          <li class="step-card">
+            <div class="step-num" aria-hidden="true">3</div>
+            <div class="step-body">
+              <h3 data-i18n="step3.title">（可选）配置 AI「自由聊聊」、多模态看图与智能语音</h3>
+              <p data-i18n="step3.desc">
+                如果想让小祀接入大模型和你自由聊天，在陪伴面板右侧点击「自由聊聊」或「多模态聊聊」，按你的条件三选一；若本机装有 VoiceStudio，插上耳机且未开游戏时会自动同步发声：
+              </p>
+
+              <!-- Beginner 3-Tab AI Setup -->
+              <div class="tabs" role="tablist" aria-label="AI connection methods">
+                <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-tab="deepseek" data-i18n="tab.deepseek">方式 A：DeepSeek 官方（最省心）</button>
+                <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="custom" data-i18n="tab.custom">方式 B：学校 / 第三方 API</button>
+                <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="local" data-i18n="tab.local">方式 C：本机 Ollama 离线模型</button>
+              </div>
+
+              <div class="tab-panel active" id="tab-deepseek" role="tabpanel">
+                <ul class="mini-steps">
+                  <li data-i18n="tab.deepseek1">1. 前往 <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer">platform.deepseek.com</a> 注册并创建一个 API Key（以 <code>sk-</code> 开头）。</li>
+                  <li data-i18n="tab.deepseek2">2. 在小祀聊天窗口里，「连接方式」选择 <strong>DeepSeek 官方 API</strong>，地址会自动填好，默认模型 <code>deepseek-chat</code>。</li>
+                  <li data-i18n="tab.deepseek3">3. 粘贴你的 API Key 即可开始纯文字聊天（Key 仅留在当前内存，关闭软件不写盘）。</li>
+                </ul>
+              </div>
+
+              <div class="tab-panel" id="tab-custom" role="tabpanel" hidden>
+                <ul class="mini-steps">
+                  <li data-i18n="tab.custom1">1. 「连接方式」选择 <strong>自定义模型接口（学校 API / 第三方）</strong>。</li>
+                  <li data-i18n="tab.custom2">2. 填入学校或平台提供的 OpenAI 兼容 Base URL（如 <code>https://api.school.edu.cn/v1</code>）并粘贴 API Key。</li>
+                  <li data-i18n="tab.custom3">3. 点击右侧 <strong>「获取模型」</strong> 选择可用模型；若所选模型支持视觉，在「多模态聊聊」里拖入图片就能一起聊。</li>
+                </ul>
+              </div>
+
+              <div class="tab-panel" id="tab-local" role="tabpanel" hidden>
+                <ul class="mini-steps">
+                  <li data-i18n="tab.local1">1. 先在电脑上启动 <strong>Ollama</strong>（默认端口 <code>11434</code>）或 <strong>LM Studio</strong>（默认端口 <code>1234</code>）。</li>
+                  <li data-i18n="tab.local2">2. 「连接方式」选择 <strong>本机模型（Ollama / 本地端口）</strong>，默认适配 <code>si-qwen2.5-3b-lang-lora:latest</code>。</li>
+                  <li data-i18n="tab.local3">3. 点击「获取模型」选择本机已下载模型，完全离线运行不消耗外部流量。</li>
+                </ul>
+              </div>
+            </div>
+          </li>
+
+          <!-- Step 4 -->
+          <li class="step-card">
+            <div class="step-num" aria-hidden="true">4</div>
+            <div class="step-body">
+              <h3 data-i18n="step4.title">日常小贴士：找回小祀、退出与备份记录</h3>
+              <ul class="mini-steps">
+                <li data-i18n="step4.tip1"><strong>找不到桌宠 / 开了鼠标穿透？</strong> 按快捷键 <code>Ctrl + Alt + S</code>，或右键电脑右下角任务栏托盘的小祀图标，点击 <strong>「找回祀」</strong>。</li>
+                <li data-i18n="step4.tip2"><strong>怎么彻底退出？</strong> 关闭陪伴面板后小祀会继续留在桌面；右键小祀或托盘图标选择「退出桌宠」即可关闭。</li>
+                <li data-i18n="step4.tip3"><strong>换电脑 / 升级新版本？</strong> 先完全退出旧版，把文件夹里的 <code>data/</code> 复制到新版目录，亲密度与聊天记录就会完整保留。</li>
+              </ul>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Interaction Cheat Sheet -->
+    <section class="section" id="interactions">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="inter.kicker">操作速查</span>
+          <h2 data-i18n="inter.title">怎么和小祀相处？</h2>
+          <p class="section-desc" data-i18n="inter.desc">记住下面这些简单的鼠标和快捷键操作，就能玩转全部功能。</p>
+        </div>
+
+        <div class="cheat-grid">
+          <div class="cheat-item">
+            <span class="cheat-key" data-i18n="inter.k1">单击 / 摸摸头</span>
+            <p data-i18n="inter.v1">戳一戳、招手并弹出角色短句，增加亲密度。</p>
+          </div>
+          <div class="cheat-item">
+            <span class="cheat-key" data-i18n="inter.k2">按住拖拽并松开</span>
+            <p data-i18n="inter.v2">把小祀放到屏幕任意位置、扩展屏或普通窗口顶边，松手后自然下落。</p>
+          </div>
+          <div class="cheat-item">
+            <span class="cheat-key" data-i18n="inter.k3">双击桌宠</span>
+            <p data-i18n="inter.v3">在当前落脚面上轻轻跳起。</p>
+          </div>
+          <div class="cheat-item">
+            <span class="cheat-key" data-i18n="inter.k4">右键桌宠</span>
+            <p data-i18n="inter.v4">切换散步、坐下、打盹、招手等动作，打开面板或退出程序。</p>
+          </div>
+          <div class="cheat-item">
+            <span class="cheat-key" data-i18n="inter.k5">耳机智能语音</span>
+            <p data-i18n="inter.v5">插上耳机自动语音+文本双输出（含拟声词与动作声），开 Apex/彩六自动静音避让。</p>
+          </div>
+          <div class="cheat-item">
+            <span class="cheat-key">Ctrl + Alt + S</span>
+            <p data-i18n="inter.v6">一键找回桌宠到主屏幕、取消鼠标穿透并恢复显示。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Beginner FAQ -->
+    <section class="section section-alt" id="faq">
+      <div class="container container-narrow">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="faq.kicker">答疑解惑</span>
+          <h2 data-i18n="faq.title">新手常见问题 (FAQ)</h2>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary data-i18n="faq.q1">我不懂编程、电脑没装 Python，可以直接用吗？</summary>
+            <p data-i18n="faq.a1">完全可以！Windows 便携版已经把所有运行环境都打包好了，下载 ZIP 后完整解压，双击 Si-DesktopPet.exe 就能直接运行，不需要安装 Python 或任何命令行工具。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q2">打 Apex、彩虹六号等游戏时小祀会突然出声干扰听脚步吗？</summary>
+            <p data-i18n="faq.a2">不会！v2.1.2 内置实时音频端点与本地游戏进程检测：仅在接入耳机且未运行 Apex、彩虹六号、CS2、瓦罗兰特、永劫无间等游戏时自动发声；一旦打开游戏或拔下耳机，会立即自动静音并切换为纯文本显示。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q3">下载打开时 Windows 提示「已保护你的电脑」，是病毒吗？</summary>
+            <p data-i18n="faq.a3">不是病毒。由于个人开源项目没有购买昂贵的商业代码签名证书，Windows SmartScreen 会对新打包的 EXE 弹出提醒。点击「更多信息」→「仍要运行」即可，你也可以核对上方提供的 SHA-256 校验值或直接查看 GitHub 开源代码。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q4">我的 API Key 和聊天记录安全吗？</summary>
+            <p data-i18n="faq.a4">所有本地对话记录与设置仅保存在你电脑的 data/ 目录中；API Key 只保留在程序运行内存里，绝不会写入本地文件或上传给第三方。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q5">开启「鼠标穿透」后点不到小祀了怎么办？</summary>
+            <p data-i18n="faq.a5">按下键盘快捷键 Ctrl + Alt + S，或者在电脑右下角任务栏系统托盘找到小祀图标，右键选择「找回祀」即可立刻恢复可点击状态。</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feedback Section (意见反馈) -->
+    <section class="section" id="feedback">
+      <div class="container container-narrow">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="fb.kicker">联系与改进</span>
+          <h2 data-i18n="fb.title">意见反馈</h2>
+          <p class="section-desc" data-i18n="fb.desc">
+            遇到下载问题、运行报错，或对小祀有新的功能想法？欢迎直接填写下方表单，你的反馈将直接发送至作者邮箱 <strong>2477160494@qq.com</strong>。
+          </p>
+        </div>
+
+        <div class="feedback-card">
+          <form id="feedbackForm" novalidate>
+            <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fbType" data-i18n="fb.typeLabel">反馈类型</label>
+                <select id="fbType" name="type">
+                  <option value="功能建议" data-i18n="fb.typeSuggestion">功能建议 / Feature Idea</option>
+                  <option value="Bug 反馈" data-i18n="fb.typeBug">问题 / Bug 反馈</option>
+                  <option value="新手求助" data-i18n="fb.typeHelp">下载或使用求助</option>
+                  <option value="其他" data-i18n="fb.typeOther">其他留言</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="fbPlatform" data-i18n="fb.platformLabel">使用版本 / 平台</label>
+                <select id="fbPlatform" name="platform">
+                  <option value="Windows v2.1.2">Windows v2.1.2</option>
+                  <option value="Android v0.1.3-preview">Android v0.1.3-preview</option>
+                  <option value="HarmonyOS / Source">HarmonyOS / Source</option>
+                  <option value="还未下载 / Not downloaded yet" data-i18n="fb.platformNone">还未下载 / 咨询</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fbName" data-i18n="fb.nameLabel">你的称呼（选填）</label>
+                <input
+                  type="text"
+                  id="fbName"
+                  name="name"
+                  placeholder="例如：管理员 / 小明"
+                  data-i18n-placeholder="fb.namePlaceholder"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="fbContact" data-i18n="fb.contactLabel">你的邮箱或 QQ（选填，方便回复你）</label>
+                <input
+                  type="text"
+                  id="fbContact"
+                  name="contact"
+                  placeholder="例如：yourname@qq.com"
+                  data-i18n-placeholder="fb.contactPlaceholder"
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="fbMessage">
+                <span data-i18n="fb.msgLabel">反馈内容</span>
+                <span class="required-mark">*</span>
+              </label>
+              <textarea
+                id="fbMessage"
+                name="message"
+                rows="5"
+                required
+                placeholder="请描述你遇到的问题（如系统版本、错误提示）或想给小祀加的新功能..."
+                data-i18n-placeholder="fb.msgPlaceholder"
+              ></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" id="fbSubmitBtn">
+                <span aria-hidden="true">✉️</span>
+                <span data-i18n="fb.submitBtn">直接发送至作者邮箱</span>
+              </button>
+              <button type="button" class="btn btn-secondary" id="fbMailtoBtn">
+                <span aria-hidden="true">📨</span>
+                <span data-i18n="fb.mailtoBtn">用本机邮箱客户端发送</span>
+              </button>
+            </div>
+
+            <div id="fbStatus" class="fb-status" role="status" aria-live="polite" hidden></div>
+          </form>
+
+          <div class="direct-email-bar">
+            <span data-i18n="fb.directLabel">也可以直接发邮件至：</span>
+            <a href="mailto:2477160494@qq.com" class="email-link">2477160494@qq.com</a>
+            <button type="button" class="copy-mini-btn" id="copyEmailBtn" data-i18n="dl.copy">复制</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/icon_badge.png" alt="小祀" width="24" height="24" />
+        <strong data-i18n="brand.name">小祀 · Si Companion</strong>
+      </div>
+      <p class="footer-note" data-i18n="footer.disclaimer">
+        「祀」、《明日方舟：终末地》及相关角色设计归原权利人所有。本项目为非官方同人开源作品，代码采用 GPL-3.0 协议，行为设计参考 isHarryh/Ark-Pets。
+      </p>
+      <div class="footer-links">
+        <a href="https://github.com/oierzhimo/si-companion" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="#sync" data-i18n="nav.sync">实时同步</a>
+        <a href="#download" data-i18n="nav.download">下载</a>
+        <a href="#guide" data-i18n="nav.guide">新手教程</a>
+        <a href="#feedback" data-i18n="nav.feedback">意见反馈</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

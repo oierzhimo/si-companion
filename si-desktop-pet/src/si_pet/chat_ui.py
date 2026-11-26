@@ -14,7 +14,7 @@ from PySide6.QtCore import Signal, Qt, QEvent, QBuffer, QIODevice
 from PySide6.QtGui import QFont, QClipboard, QImage, QKeyEvent
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QTextEdit, QTextBrowser, QPushButton, QComboBox, QCompleter,
-    QFormLayout, QApplication)
+    QFormLayout, QApplication, QWidget)
 
 from .conversation import (CUSTOM_DEFAULT_ENDPOINT, ConversationError, DEEPSEEK_DEFAULT_ENDPOINT,
     DEEPSEEK_DEFAULT_MODEL, DEFAULT_GENAI_ENDPOINT,
@@ -24,9 +24,11 @@ from .conversation import (CUSTOM_DEFAULT_ENDPOINT, ConversationError, DEEPSEEK_
     endpoint_for_provider, fetch_models as fetch_models_request, filter_genai_models,
     local_endpoint, looks_like_gpt_model, request_reply,
     resolve_genai_model, validate_model_for_send)
-from . import chat_backend
+from . import chat_backend, native
 from .chat_backend import ChatSession, ChatError
 from .theme import bind_theme, dialog_stylesheet
+from .chat_widgets import build_config_drawer, render_transcript_html
+from .voice import scaled_wav
 
 try:
     import winsound
@@ -136,7 +138,6 @@ class MultimodalDialog(QDialog):
         self.setWindowTitle('和祀聊聊 · 多模态聊聊')
         self.resize(660, 760)
         self.setAcceptDrops(True)
-        bind_theme(self, lambda: self.setStyleSheet(dialog_stylesheet()))
 
         layout = QVBoxLayout(self)
 
@@ -144,10 +145,11 @@ class MultimodalDialog(QDialog):
             '支持拖入或粘贴图片（最多 4 张）。支持本机模型（Ollama 可配视觉 LoRA）、DeepSeek 官方 API（纯文字）'
             '及自定义模型接口（如学校 API 网关）；对话记录只保存在本机，API Key 仅留内存不写盘。'
         )
+        hint.setObjectName('muted')
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
-        # Service configuration form
+        # Service configuration form inside a collapsible drawer so messages dominate
         form = QFormLayout()
         self.service = QComboBox()
         self.service.addItem('本机模型（Ollama / 本地端口）', 'local')
@@ -191,23 +193,33 @@ class MultimodalDialog(QDialog):
         form.addRow(self.api_key_label, self.api_key)
         form.addRow('模型', model_row)
         form.addRow('管理员偏好', self.profile)
-        layout.addLayout(form)
+        drawer_box, self._drawer_summary, self._drawer_toggle, self._drawer = build_config_drawer(form, expanded=not had_saved_config)
+        layout.addWidget(drawer_box)
         self._update_provider_labels(self.provider)
 
         # Transcript display area
         self.transcript = QTextBrowser()
+        self.transcript.setOpenExternalLinks(False)
         layout.addWidget(self.transcript, 1)
 
-        # Attachment status row
+        # Attachment status & thumbnail strip
         attach_row = QHBoxLayout()
         self.attach_label = QLabel('待发图片：0 张')
         self.clear_images_btn = QPushButton('清除图片')
+        self.clear_images_btn.setObjectName('chip')
         self.clear_images_btn.setAutoDefault(False)
         self.clear_images_btn.setDefault(False)
         attach_row.addWidget(self.attach_label)
         attach_row.addStretch()
         attach_row.addWidget(self.clear_images_btn)
         layout.addLayout(attach_row)
+
+        self.thumb_strip = QHBoxLayout()
+        self.thumb_strip.setSpacing(6)
+        self.thumb_host = QWidget()
+        self.thumb_host.setLayout(self.thumb_strip)
+        self.thumb_host.setVisible(False)
+        layout.addWidget(self.thumb_host)
 
         # Input box
         self.input = QTextEdit()
@@ -220,6 +232,7 @@ class MultimodalDialog(QDialog):
             self.migration_notice
             or '不会自动获取模型或发送对话。口令只留在内存，不会读取其他软件的模型或口令。'
         )
+        self.status.setObjectName('muted')
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
@@ -229,20 +242,28 @@ class MultimodalDialog(QDialog):
         self.clear_btn.setAutoDefault(False)
         self.clear_btn.setDefault(False)
 
-        self.voice_btn = QPushButton('语音请求')
+        self.voice_btn = QPushButton('语音同步')
         self.voice_btn.setCheckable(True)
         self.voice_btn.setChecked(False)
         self.voice_btn.setAutoDefault(False)
         self.voice_btn.setDefault(False)
-        self.voice_btn.setToolTip('选中后，祀的回复将尝试合成语音播放。')
+        self.voice_btn.setToolTip('接入耳机且未运行本地游戏时自动开启语音+文本同步输出；也可手动切换。')
+        self._voice_manual_override: bool | None = None
+        self.voice_btn.clicked.connect(self._on_voice_btn_clicked)
+        self._sync_auto_voice_button()
 
         self.send = QPushButton('发送')
+        self.send.setObjectName('primary')
 
         row.addWidget(self.clear_btn)
         row.addWidget(self.voice_btn)
         row.addStretch()
         row.addWidget(self.send)
         layout.addLayout(row)
+
+        self.model.textChanged.connect(self._update_drawer_summary)
+        self._update_drawer_summary()
+        bind_theme(self, self._apply_theme)
 
         # Signal connections
         self.completed.connect(self.finished_reply, Qt.ConnectionType.QueuedConnection)
@@ -277,7 +298,27 @@ class MultimodalDialog(QDialog):
 
     @voice_mode.setter
     def voice_mode(self, enabled: bool):
+        self._voice_manual_override = bool(enabled)
         self.voice_btn.setChecked(bool(enabled))
+
+    def _on_voice_btn_clicked(self, checked: bool):
+        self._voice_manual_override = bool(checked)
+
+    def _sync_auto_voice_button(self) -> None:
+        """Sync voice toggle with headphone + local-game policy unless manually overridden."""
+        store = getattr(self.ctrl, 'store', None)
+        if store is None:
+            return
+        allowed, reason = native.voice_output_allowed(store)
+        self.voice_btn.setToolTip(f'{reason}（点击可手动切换当前窗口语音）')
+        if self._voice_manual_override is None:
+            self.voice_btn.blockSignals(True)
+            self.voice_btn.setChecked(allowed)
+            self.voice_btn.blockSignals(False)
+
+    def showEvent(self, event):
+        self._sync_auto_voice_button()
+        super().showEvent(event)
 
     def _voice_profile_id(self) -> str:
         """Return configured VoiceStudio profile ID from ctrl.store, or default."""
@@ -293,21 +334,25 @@ class MultimodalDialog(QDialog):
 
     # ---------------------------------------------------------------- render
 
+    def _apply_theme(self):
+        self.setStyleSheet(dialog_stylesheet())
+        if hasattr(self, 'transcript') and hasattr(self, 'session'):
+            self.render()
+
+    def _update_drawer_summary(self, _text=''):
+        if not hasattr(self, '_drawer_summary'):
+            return
+        svc = self.service.currentText()
+        mdl = self.model.text().strip() or '未填模型'
+        self._drawer_summary.setText(f'当前连接：{svc} · {mdl}')
+
     def render(self):
-        """Re-render transcript from session history (plain text only)."""
-        blocks = []
-        for t in self.session.turns:
-            user_line = '管理员：' + t['user']
-            atts = t.get('attachments')
-            if isinstance(atts, list) and atts:
-                badges = ' '.join(
-                    f"[{a.get('kind', 'file')}:{a.get('name', '附件')}]"
-                    for a in atts if isinstance(a, dict)
-                )
-                if badges:
-                    user_line += ' ' + badges
-            blocks.append(user_line + '\n祀：' + t['assistant'])
-        self.transcript.setPlainText('\n\n'.join(blocks))
+        """Re-render transcript as plain-text-safe HTML bubbles with portrait."""
+        html_doc = render_transcript_html(self.session.turns, portrait_mood='happy')
+        if html_doc:
+            self.transcript.setHtml(html_doc)
+        else:
+            self.transcript.setPlainText('')
         self.transcript.verticalScrollBar().setValue(
             self.transcript.verticalScrollBar().maximum()
         )
@@ -330,6 +375,25 @@ class MultimodalDialog(QDialog):
 
     def _update_attach_label(self):
         self.attach_label.setText(f'待发图片：{len(self.pending_images)} 张')
+        if hasattr(self, 'thumb_strip') and hasattr(self, 'thumb_host'):
+            while self.thumb_strip.count():
+                item = self.thumb_strip.takeAt(0)
+                if item.widget() is not None:
+                    item.widget().deleteLater()
+            for raw in self.pending_images:
+                img = QImage.fromData(raw)
+                lbl = QLabel()
+                lbl.setFixedSize(48, 48)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                if not img.isNull():
+                    from PySide6.QtGui import QPixmap
+                    pix = QPixmap.fromImage(img).scaled(46, 46, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    lbl.setPixmap(pix)
+                else:
+                    lbl.setText('图')
+                self.thumb_strip.addWidget(lbl)
+            self.thumb_strip.addStretch()
+            self.thumb_host.setVisible(bool(self.pending_images))
 
     def _add_image_bytes(self, data: bytes) -> bool:
         if len(self.pending_images) >= _MAX_IMAGES:
@@ -458,7 +522,16 @@ class MultimodalDialog(QDialog):
         except (RuntimeError, TypeError):
             pass
 
+    def _trigger_pet_pose(self, action: str):
+        perform = getattr(self.ctrl, 'perform', None)
+        if callable(perform) and not getattr(self.ctrl, 'focus_end', None):
+            try:
+                perform(action, announce=False)
+            except Exception:
+                pass
+
     def _update_provider_labels(self, provider):
+        self._update_drawer_summary()
         if provider == 'deepseek':
             self.endpoint_label.setText('DeepSeek 接口')
             self.endpoint.setPlaceholderText('https://api.deepseek.com/v1')
@@ -644,6 +717,7 @@ class MultimodalDialog(QDialog):
         provider = self.current_provider()
         if error:
             self.status.setText(error)
+            self._trigger_pet_pose('failed')
             return
         if not isinstance(models, list) or not models:
             self.status.setText(
@@ -741,7 +815,18 @@ class MultimodalDialog(QDialog):
             self.status.setText('对话暂时未能完成，请重试。')
             return
 
-        voice_requested = self.voice_mode
+        self._sync_auto_voice_button()
+        store_ref = getattr(self.ctrl, 'store', None)
+        extra_cfg = ''
+        if store_ref is not None:
+            try:
+                extra_cfg = store_ref['voice_blocked_games']
+            except Exception:
+                extra_cfg = ''
+        if store_ref is not None and native.running_blocked_game(extra_names=extra_cfg):
+            voice_requested = False
+        else:
+            voice_requested = self.voice_mode
         voice_profile_id = self._voice_profile_id()
         effective_text = text.strip() if text.strip() else '（图片）'
 
@@ -870,6 +955,7 @@ class MultimodalDialog(QDialog):
 
         if error:
             self.status.setText(error)
+            self._trigger_pet_pose('failed')
             return
         if effective_text is None:
             return
@@ -920,13 +1006,26 @@ class MultimodalDialog(QDialog):
 
         self.render()
 
-        # Voice playback or status update
-        if voice_bytes and winsound is not None:
+        # Voice playback or status update (re-check game suppression right before playing)
+        store_now = getattr(self.ctrl, 'store', None)
+        extra_g = ''
+        if store_now is not None:
             try:
-                self.status.setText('已保存，语音播放中。')
+                extra_g = store_now['voice_blocked_games']
+            except Exception:
+                extra_g = ''
+        blocked_now = native.running_blocked_game(extra_names=extra_g, force_refresh=True) if store_now is not None else None
+        if voice_bytes and winsound is not None and not blocked_now:
+            try:
+                self.status.setText('已保存，语音与文本同步输出中。')
             except RuntimeError:
                 pass
             self._play_voice(voice_bytes)
+        elif blocked_now and voice_bytes:
+            try:
+                self.status.setText(f'已保存；检测到游戏（{blocked_now}），已自动静音仅显示文本。')
+            except RuntimeError:
+                pass
         elif self.voice_mode and not error:
             try:
                 self.status.setText('语音合成失败，以文字回复。')
@@ -939,15 +1038,35 @@ class MultimodalDialog(QDialog):
                 pass
 
     def _play_voice(self, wav_bytes: bytes):
-        """Play WAV audio in a background thread."""
+        """Play WAV audio asynchronously without blocking."""
+        store = getattr(self.ctrl, 'store', None)
+        vol = 65
+        if store is not None:
+            try:
+                vol = int(float(store['voice_volume']))
+            except Exception:
+                vol = 65
+        if vol <= 0 or winsound is None:
+            return
+
         def _play():
+            tmp_path = None
+            scaled_path = None
             try:
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
                     f.write(wav_bytes)
-                    tmp_path = f.name
-                winsound.PlaySound(tmp_path, winsound.SND_FILENAME)
+                    tmp_path = Path(f.name)
+                scaled_path = scaled_wav(tmp_path, vol)
+                winsound.PlaySound(str(scaled_path), winsound.SND_FILENAME | winsound.SND_NODEFAULT)
             except Exception:
                 pass
+            finally:
+                for p in (scaled_path, tmp_path):
+                    if p is not None:
+                        try:
+                            Path(p).unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
         try:
             threading.Thread(target=_play, daemon=True, name='si-mm-voice').start()

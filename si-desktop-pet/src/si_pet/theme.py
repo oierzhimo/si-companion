@@ -14,91 +14,109 @@ except ImportError:  # pragma: no cover - non-Windows
     winreg = None
 
 LIGHT_COLORS = {
-    'window_bg': '#eef3ee',
-    'dialog_bg': '#f4f7f4',
-    'sidebar_bg': '#fafcf8',
-    'card_bg': '#fafcf9',
+    'window_bg': '#f3efe6',
+    'dialog_bg': '#f7f4ec',
+    'sidebar_bg': '#faf8f2',
+    'card_bg': '#fcfaf5',
     'input_bg': '#ffffff',
-    'text': '#1c362f',
-    'brand_text': '#214536',
-    'headline_text': '#204234',
-    'muted_text': '#586c60',
-    'nav_text': '#566b5e',
-    'nav_checked_bg': '#e3ede0',
-    'nav_checked_text': '#1d3b2e',
-    'border': '#c8d7c9',
-    'border_soft': '#dbe5db',
-    'btn_bg': '#fafcf8',
-    'btn_hover': '#e2eee2',
-    'btn_hover_border': '#98b29d',
-    'btn_pressed': '#ccdcca',
-    'btn_disabled_text': '#8fa196',
-    'primary_bg': '#2f5946',
-    'primary_hover': '#406f58',
-    'primary_text': '#ffffff',
-    'slider_groove': '#dbe5d9',
-    'slider_fill': '#6a9575',
-    'slider_handle': '#2e5945',
+    'text': '#1f2624',
+    'brand_text': '#a93b32',
+    'headline_text': '#222c29',
+    'muted_text': '#626a65',
+    'nav_text': '#555f59',
+    'nav_checked_bg': '#e9e4d7',
+    'nav_checked_text': '#1c2421',
+    'border': '#cfc9ba',
+    'border_soft': '#e4dfd3',
+    'btn_bg': '#faf8f3',
+    'btn_hover': '#eeeae0',
+    'btn_hover_border': '#b59348',
+    'btn_pressed': '#e2ddd0',
+    'btn_disabled_text': '#969c95',
+    'primary_bg': '#293430',
+    'primary_hover': '#394842',
+    'primary_text': '#fbf8f0',
+    'gold_accent': '#b88c38',
+    'seal_bg': '#b63d33',
+    'seal_text': '#fcf7ef',
+    'jade_accent': '#5b8772',
+    'slider_groove': '#dfd9cb',
+    'slider_fill': '#789b87',
+    'slider_handle': '#b88c38',
     'check_bg': '#ffffff',
-    'check_border': '#9bb59e',
-    'check_checked': '#547d5d',
-    'progress_bg': '#e1eade',
-    'progress_chunk': '#789b75',
-    'selection_bg': '#cfe2d2',
-    'selection_text': '#142a24',
-    'menu_bg': '#f7faf7',
-    'menu_text': '#183b35',
-    'menu_border': '#bdd3c5',
-    'menu_selected': '#dcece2',
-    'preview_grad0': '#e1ead8',
-    'preview_grad1': '#c7d9c8',
-    'preview_glow': (250, 253, 242, 65),
-    'preview_text': '#44634d',
-    'journal_meta': '#6f8274',
+    'check_border': '#aba392',
+    'check_checked': '#2e4d41',
+    'progress_bg': '#e6e1d5',
+    'progress_chunk': '#b88c38',
+    'selection_bg': '#dce6de',
+    'selection_text': '#17211e',
+    'menu_bg': '#faf7f0',
+    'menu_text': '#1f2624',
+    'menu_border': '#c9c2b2',
+    'menu_selected': '#eae5d7',
+    'preview_grad0': '#eae5d8',
+    'preview_grad1': '#d5ddd4',
+    'preview_glow': (255, 250, 238, 72),
+    'preview_text': '#48574f',
+    'journal_meta': '#737a74',
+    'bubble_user_bg': '#eae4d6',
+    'bubble_user_text': '#1f2624',
+    'bubble_pet_bg': '#f2f5f1',
+    'bubble_pet_border': '#c8d3ca',
+    'bubble_pet_text': '#1e2623',
 }
 
 DARK_COLORS = {
-    'window_bg': '#151b18',
-    'dialog_bg': '#19201c',
-    'sidebar_bg': '#1c241f',
-    'card_bg': '#212b26',
-    'input_bg': '#141a17',
-    'text': '#eaf3ed',
-    'brand_text': '#cbe8d7',
-    'headline_text': '#d7efe1',
-    'muted_text': '#a7bab0',
-    'nav_text': '#b7c9bf',
-    'nav_checked_bg': '#2c3d34',
-    'nav_checked_text': '#eef8f2',
-    'border': '#394a41',
-    'border_soft': '#2c3932',
-    'btn_bg': '#26322c',
-    'btn_hover': '#32423a',
-    'btn_hover_border': '#5f826d',
-    'btn_pressed': '#3d5147',
-    'btn_disabled_text': '#6b7e73',
-    'primary_bg': '#366c53',
-    'primary_hover': '#458366',
-    'primary_text': '#ffffff',
-    'slider_groove': '#2f3e36',
-    'slider_fill': '#5f9674',
-    'slider_handle': '#8bc4a6',
-    'check_bg': '#141a17',
-    'check_border': '#556e60',
-    'check_checked': '#4e8668',
-    'progress_bg': '#28342e',
-    'progress_chunk': '#679f7b',
-    'selection_bg': '#325242',
-    'selection_text': '#f4faf6',
-    'menu_bg': '#1f2823',
-    'menu_text': '#eaf3ed',
-    'menu_border': '#3b4e43',
-    'menu_selected': '#304338',
-    'preview_grad0': '#1f2923',
-    'preview_grad1': '#293931',
-    'preview_glow': (145, 195, 165, 28),
-    'preview_text': '#bdd7c7',
-    'journal_meta': '#a2bcae',
+    'window_bg': '#141716',
+    'dialog_bg': '#181c1a',
+    'sidebar_bg': '#1a1f1d',
+    'card_bg': '#202624',
+    'input_bg': '#121614',
+    'text': '#edeae1',
+    'brand_text': '#df6c5c',
+    'headline_text': '#e7e2d5',
+    'muted_text': '#a6ada7',
+    'nav_text': '#b4bbb5',
+    'nav_checked_bg': '#2b3330',
+    'nav_checked_text': '#f3efe5',
+    'border': '#38413d',
+    'border_soft': '#2a322f',
+    'btn_bg': '#242c29',
+    'btn_hover': '#2e3834',
+    'btn_hover_border': '#c9a456',
+    'btn_pressed': '#394540',
+    'btn_disabled_text': '#6b726d',
+    'primary_bg': '#365146',
+    'primary_hover': '#436557',
+    'primary_text': '#f7f3ea',
+    'gold_accent': '#d4af5f',
+    'seal_bg': '#b64035',
+    'seal_text': '#fbf6ee',
+    'jade_accent': '#79a38e',
+    'slider_groove': '#2d3632',
+    'slider_fill': '#6d9782',
+    'slider_handle': '#d4af5f',
+    'check_bg': '#141917',
+    'check_border': '#58645d',
+    'check_checked': '#6b9680',
+    'progress_bg': '#272f2b',
+    'progress_chunk': '#d4af5f',
+    'selection_bg': '#32473e',
+    'selection_text': '#f4f1e8',
+    'menu_bg': '#1d2320',
+    'menu_text': '#edeae1',
+    'menu_border': '#3a443f',
+    'menu_selected': '#2c3631',
+    'preview_grad0': '#1d2421',
+    'preview_grad1': '#27322e',
+    'preview_glow': (212, 175, 95, 26),
+    'preview_text': '#c4c8be',
+    'journal_meta': '#9ea8a0',
+    'bubble_user_bg': '#2a332f',
+    'bubble_user_text': '#edeae1',
+    'bubble_pet_bg': '#1f2824',
+    'bubble_pet_border': '#36443e',
+    'bubble_pet_text': '#e9e6dd',
 }
 
 
@@ -159,25 +177,30 @@ def panel_stylesheet(dark: bool | None = None) -> str:
         f'QFrame#sidebar{{background:{c["sidebar_bg"]};border-right:1px solid {c["border_soft"]};}}'
         f'QLabel{{background:transparent;color:{c["text"]};}}'
         f'QLabel#brand{{font-size:33px;font-weight:650;color:{c["brand_text"]};}}'
+        f'QLabel#seal{{background:{c["seal_bg"]};color:{c["seal_text"]};font-size:28px;font-weight:700;border-radius:10px;border:1px solid {c["gold_accent"]};padding:4px;}}'
         f'QLabel#muted{{color:{c["muted_text"]};font-size:12px;}}'
-        f'QLabel#headline{{font-size:30px;font-weight:650;color:{c["headline_text"]};}}'
+        f'QLabel#headline{{font-size:28px;font-weight:650;color:{c["headline_text"]};}}'
         f'QLabel#eyebrow{{font-size:11px;color:{c["muted_text"]};letter-spacing:2px;}}'
-        f'QLabel#subhead{{font-size:18px;font-weight:600;color:{c["text"]};}}'
-        f'QFrame#card{{background:{c["card_bg"]};border:1px solid {c["border_soft"]};border-radius:19px;}}'
-        f'QPushButton{{background:{c["btn_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:12px;padding:11px 17px;text-align:left;}}'
+        f'QLabel#subhead{{font-size:16px;font-weight:600;color:{c["text"]};}}'
+        f'QFrame#card{{background:{c["card_bg"]};border:1px solid {c["border_soft"]};border-radius:18px;}}'
+        f'QPushButton{{background:{c["btn_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:11px;padding:10px 15px;text-align:left;}}'
         f'QPushButton:hover{{background:{c["btn_hover"]};border-color:{c["btn_hover_border"]};}}'
         f'QPushButton:pressed{{background:{c["btn_pressed"]};}}'
         f'QPushButton:disabled{{color:{c["btn_disabled_text"]};}}'
-        f'QPushButton#primary{{background:{c["primary_bg"]};color:{c["primary_text"]};border:0;font-weight:600;}}'
+        f'QPushButton#actionTile{{text-align:center;padding:9px 10px;border-radius:10px;}}'
+        f'QPushButton#chip{{text-align:center;padding:5px 11px;border-radius:8px;font-size:12px;}}'
+        f'QPushButton#chip:checked{{background:{c["primary_bg"]};color:{c["primary_text"]};border-color:{c["gold_accent"]};font-weight:600;}}'
+        f'QPushButton#primary{{background:{c["primary_bg"]};color:{c["primary_text"]};border:1px solid {c["gold_accent"]};font-weight:600;text-align:center;}}'
         f'QPushButton#primary:hover{{background:{c["primary_hover"]};}}'
-        f'QPushButton#nav{{border:0;background:transparent;color:{c["nav_text"]};padding:13px 16px;border-radius:11px;}}'
-        f'QPushButton#nav:checked{{background:{c["nav_checked_bg"]};color:{c["nav_checked_text"]};font-weight:600;}}'
+        f'QPushButton#nav{{border:0;background:transparent;color:{c["nav_text"]};padding:12px 14px;border-radius:10px;}}'
+        f'QPushButton#nav:checked{{background:{c["nav_checked_bg"]};color:{c["nav_checked_text"]};font-weight:600;border-left:3px solid {c["gold_accent"]};}}'
         f'QSlider::groove:horizontal{{height:5px;background:{c["slider_groove"]};border-radius:2px;}}'
         f'QSlider::sub-page:horizontal{{background:{c["slider_fill"]};border-radius:2px;}}'
         f'QSlider::handle:horizontal{{background:{c["slider_handle"]};width:16px;margin:-6px 0;border-radius:8px;}}'
-        f'QCheckBox{{spacing:10px;padding:8px 0;background:transparent;color:{c["text"]};}}'
-        f'QCheckBox::indicator{{width:17px;height:17px;border:1px solid {c["check_border"]};border-radius:5px;background:{c["check_bg"]};}}'
-        f'QCheckBox::indicator:checked{{background:{c["check_checked"]};border-color:{c["check_checked"]};}}'
+        f'QCheckBox{{spacing:10px;padding:6px 0;background:transparent;color:{c["text"]};}}'
+        f'QCheckBox::indicator{{width:18px;height:18px;border:2px solid {c["check_border"]};border-radius:6px;background:{c["check_bg"]};}}'
+        f'QCheckBox::indicator:hover{{border-color:{c["gold_accent"]};}}'
+        f'QCheckBox::indicator:checked{{background:{c["primary_text"]};border:5px solid {c["check_checked"]};}}'
         f'QLineEdit,QTextEdit,QPlainTextEdit,QSpinBox{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:8px;padding:6px 9px;selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
         f'QComboBox{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:8px;padding:7px;}}'
         f'QComboBox QAbstractItemView{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
@@ -193,15 +216,22 @@ def dialog_stylesheet(dark: bool | None = None) -> str:
     return (
         f'QDialog{{background:{c["dialog_bg"]};color:{c["text"]};font-family:"Microsoft YaHei UI","Segoe UI";font-size:13px;}}'
         f'QDialog QLabel{{background:transparent;color:{c["text"]};}}'
+        f'QDialog QLabel#muted{{color:{c["muted_text"]};font-size:12px;}}'
+        f'QDialog QFrame#drawer{{background:{c["card_bg"]};border:1px solid {c["border_soft"]};border-radius:12px;}}'
         f'QDialog QLineEdit,QDialog QTextEdit,QDialog QPlainTextEdit,QDialog QSpinBox,QDialog QListWidget{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:8px;padding:6px 8px;selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
-        f'QDialog QTextBrowser{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:10px;padding:10px;selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
+        f'QDialog QTextBrowser{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:12px;padding:12px;selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
         f'QDialog QComboBox{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:8px;padding:6px 10px;}}'
         f'QDialog QComboBox QAbstractItemView,QListView{{background:{c["input_bg"]};color:{c["text"]};border:1px solid {c["border"]};selection-background-color:{c["selection_bg"]};selection-color:{c["selection_text"]};}}'
         f'QDialog QPushButton{{background:{c["btn_bg"]};color:{c["text"]};border:1px solid {c["border"]};border-radius:8px;padding:7px 14px;text-align:center;}}'
         f'QDialog QPushButton:hover{{background:{c["btn_hover"]};border-color:{c["btn_hover_border"]};}}'
         f'QDialog QPushButton:pressed{{background:{c["btn_pressed"]};}}'
         f'QDialog QPushButton:disabled{{color:{c["btn_disabled_text"]};}}'
+        f'QDialog QPushButton#primary{{background:{c["primary_bg"]};color:{c["primary_text"]};border:1px solid {c["gold_accent"]};font-weight:600;}}'
+        f'QDialog QPushButton#primary:hover{{background:{c["primary_hover"]};}}'
+        f'QDialog QPushButton#chip{{padding:5px 10px;font-size:12px;}}'
         f'QDialog QCheckBox{{background:transparent;color:{c["text"]};spacing:8px;}}'
+        f'QDialog QCheckBox::indicator{{width:16px;height:16px;border:2px solid {c["check_border"]};border-radius:5px;background:{c["check_bg"]};}}'
+        f'QDialog QCheckBox::indicator:checked{{background:{c["primary_text"]};border:4px solid {c["check_checked"]};}}'
     )
 
 

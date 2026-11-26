@@ -5,5 +5,7 @@ release/
 data/
 __pycache__/
 *.pyc
+art-source/mmd-chaye/
 qa/tmp/
 qa/*settings.json
+qa/sit_*

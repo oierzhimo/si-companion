@@ -1,14 +1,15 @@
 {
   "created": "2026-11-02",
-  "chunks": 75,
+  "chunks": 81,
   "official_chunks": 5,
-  "design_chunks": 69,
+  "design_chunks": 75,
   "doc_sha256": "ddb357b9acf3dde10f16e2d4409f8aa4dfc263e6a8eb79c6deef46fe48e8d89d",
-  "corpus_sha256": "4c323d00893e2d3717ce26ae33ee73e94b80e96cad4bd0fd6331c898464b12bc",
+  "corpus_sha256": "d11ba6b5c5410459a717e8fefa513ee2c83ab1ee440a76f22877ee85fcc2cdd8",
   "private_chats_used": false,
   "doc_commands_executed": false,
   "official_url": "https://endfield.hypergryph.com/",
   "coverage": "Si public introduction plus user-provided character design; not a complete Arknights/Endfield knowledge base",
   "vector_status": "bge-m3 official download rejected by network guard; lexical retrieval only until vectors built",
-  "updated": "2026-11-20"
+  "updated": "2026-11-25",
+  "clean_spec_sha256": "d2739e4af5016a546890c5cfc786a751c14b3b7e02e7794f94c37d3e17d00233"
 }

@@ -57,5 +57,22 @@ class Sprites:
             tinted.setDevicePixelRatio(dpr);self.remember(self.outline_cache,key,tinted,6)
         return self.outline_cache[key]
 
+    def portrait_path(self,mood='neutral'):
+        root=resource_root()/'assets'/'portraits'
+        cand=root/f'{mood}.png'
+        if cand.is_file():return cand
+        fallback=root/'neutral.png'
+        return fallback if fallback.is_file() else None
+
+    def portrait(self,mood='neutral',size=48):
+        path=self.portrait_path(mood)
+        if path is not None:
+            return QPixmap(str(path)).scaled(size,size,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        return self.pixmap('idle',0,1).copy(45,35,100,115).scaled(size,size,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+
     def icon(self):
+        root=resource_root()/'assets'
+        for rel in ('portraits/icon_badge.png','si.ico'):
+            p=root/rel
+            if p.is_file():return QIcon(str(p))
         return QIcon(self.pixmap('idle',0,1).copy(45,35,100,115))

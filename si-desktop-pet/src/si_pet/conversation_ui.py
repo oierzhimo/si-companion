@@ -19,6 +19,7 @@ from .conversation import (CUSTOM_DEFAULT_ENDPOINT, Conversation, ConversationEr
                            local_endpoint, looks_like_gpt_model, request_reply,
                            resolve_genai_model, validate_model_for_send)
 from .theme import bind_theme, dialog_stylesheet
+from .chat_widgets import build_config_drawer, render_transcript_html
 
 # A quiet request is acted on only when the whole message is one of these
 # exact, affirmative phrasings.  This is intentionally a closed list: no
@@ -120,10 +121,10 @@ class ConversationDialog(QDialog):
         self.available_models = []
         self.setWindowTitle('和祀聊聊 · 自由聊聊')
         self.resize(640, 700)
-        bind_theme(self, lambda: self.setStyleSheet(dialog_stylesheet()))
         layout = QVBoxLayout(self)
         hint = QLabel('支持本机模型（Ollama / LM Studio）、DeepSeek 官方 API、自定义模型接口（如学校 API 网关），'
                       '以及上科大 GenAI 反代；对话记录只保存在本机，API Key / 口令仅留内存不写盘。')
+        hint.setObjectName('muted')
         hint.setWordWrap(True); layout.addWidget(hint)
         form = QFormLayout()
         self.service = QComboBox()
@@ -157,15 +158,18 @@ class ConversationDialog(QDialog):
         form.addRow(self.endpoint_label, self.endpoint)
         form.addRow(self.api_key_label, self.api_key)
         form.addRow('模型', model_row)
-        form.addRow('管理员偏好', self.profile); layout.addLayout(form)
+        form.addRow('管理员偏好', self.profile)
+        drawer_box, self._drawer_summary, self._drawer_toggle, self._drawer = build_config_drawer(form, expanded=not had_saved_config)
+        layout.addWidget(drawer_box)
         self._update_provider_labels(self.provider)
-        self.transcript = QTextBrowser(); layout.addWidget(self.transcript, 1)
+        self.transcript = QTextBrowser(); self.transcript.setOpenExternalLinks(False); layout.addWidget(self.transcript, 1)
         self.input = QTextEdit(); self.input.setMaximumHeight(100)
         self.input.setPlaceholderText('想说的话……'); layout.addWidget(self.input)
         self.status = QLabel(
             self.migration_notice
             or '不会自动获取模型或发送对话。口令只留在内存，不会读取其他软件的模型或口令。'
         )
+        self.status.setObjectName('muted')
         self.status.setWordWrap(True); layout.addWidget(self.status)
         row = QHBoxLayout()
         self.clear = QPushButton('清除对话'); self.clear.clicked.connect(self.clear_turns)
@@ -176,7 +180,7 @@ class ConversationDialog(QDialog):
         self.quiet_button.setDefault(False)
         self.quiet_button.setToolTip('立即在本机进入安静陪伴：靠边坐下、停止自主走动，不会联网。')
         self.quiet_button.clicked.connect(self.quiet_companion)
-        self.send = QPushButton('发送'); self.send.clicked.connect(self.submit)
+        self.send = QPushButton('发送'); self.send.setObjectName('primary'); self.send.clicked.connect(self.submit)
         row.addWidget(self.clear); row.addWidget(self.quiet_button)
         row.addStretch(); row.addWidget(self.send); layout.addLayout(row)
         self.completed.connect(self.finished_reply, Qt.ConnectionType.QueuedConnection)
@@ -185,11 +189,30 @@ class ConversationDialog(QDialog):
         self.get_models.clicked.connect(self.fetch_models)
         self.endpoint.textEdited.connect(self.connection_edited)
         self.api_key.textEdited.connect(self.connection_edited)
+        self.model.textChanged.connect(self._update_drawer_summary)
+        self._update_drawer_summary()
+        bind_theme(self, self._apply_theme)
         self.render()
 
+    def _apply_theme(self):
+        self.setStyleSheet(dialog_stylesheet())
+        if hasattr(self, 'transcript') and hasattr(self, 'session'):
+            self.render()
+
+    def _update_drawer_summary(self, _text=''):
+        if not hasattr(self, '_drawer_summary'):
+            return
+        svc = self.service.currentText()
+        mdl = self.model.text().strip() or '未填模型'
+        self._drawer_summary.setText(f'当前连接：{svc} · {mdl}')
+
     def render(self):
-        # Plain text prevents model-provided HTML, links or remote images executing.
-        self.transcript.setPlainText('\n\n'.join('管理员：' + t['user'] + '\n祀：' + t['assistant'] for t in self.session.turns))
+        # Plain-text-safe HTML bubbles: all text is escaped and preserves 管理员： / 祀： prefixes.
+        html_doc = render_transcript_html(self.session.turns, portrait_mood='happy')
+        if html_doc:
+            self.transcript.setHtml(html_doc)
+        else:
+            self.transcript.setPlainText('')
         self.transcript.verticalScrollBar().setValue(self.transcript.verticalScrollBar().maximum())
 
     def current_provider(self):
@@ -216,6 +239,7 @@ class ConversationDialog(QDialog):
         except (RuntimeError, TypeError): pass
 
     def _update_provider_labels(self, provider):
+        self._update_drawer_summary()
         if provider == 'deepseek':
             self.endpoint_label.setText('DeepSeek 接口')
             self.endpoint.setPlaceholderText('https://api.deepseek.com/v1')
@@ -394,7 +418,12 @@ class ConversationDialog(QDialog):
         self.get_models.setEnabled(True)
         provider = self.current_provider()
         if error:
-            self.status.setText(error); return
+            self.status.setText(error)
+            perform = getattr(self.ctrl, 'perform', None)
+            if callable(perform) and not getattr(self.ctrl, 'focus_end', None):
+                try: perform('failed', announce=False)
+                except Exception: pass
+            return
         if not isinstance(models, list) or not models:
             self.status.setText(
                 GENAI_NO_MATCH_MESSAGE if provider == 'genai'
@@ -620,14 +649,23 @@ class ConversationDialog(QDialog):
         if generation != self.generation:
             return
         if error:
-            self.status.setText(error); return
+            self.status.setText(error)
+            perform = getattr(self.ctrl, 'perform', None)
+            if callable(perform) and not getattr(self.ctrl, 'focus_end', None):
+                try: perform('failed', announce=False)
+                except Exception: pass
+            return
         if text is None: return
         try: self.session.commit(text, reply)
         except ConversationError as exc: self.status.setText(str(exc)); return
         if self.input.toPlainText() == text: self.input.clear()
         self.render(); self.status.setText('已保存到本机。')
-        # Long replies stay in the dialog; avoid a large obstructive desktop bubble.
-        if len(reply) <= 160: self.ctrl.say(reply, True)
+        # Long replies stay in the dialog; avoid a large obstructive desktop bubble,
+        # while still triggering smart voice output (when headphones are connected & no game runs).
+        if len(reply) <= 160:
+            self.ctrl.say(reply, True)
+        elif hasattr(self.ctrl, 'voice_speech') and not getattr(self.ctrl, 'hidden', False):
+            self.ctrl.voice_speech.emit(reply)
 
     def closeEvent(self, event):
         # A late network result must not speak or recreate a cleared/closed turn.

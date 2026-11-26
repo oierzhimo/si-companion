@@ -46,8 +46,11 @@ MAX_IMAGE_BYTES: int = 10 * 1024 * 1024   # 10 MiB — input gate
 MAX_IMAGE_SIDE: int = 1024                 # longest edge after thumbnail
 MAX_IMAGE_OUTPUT_BYTES: int = 4 * 1024 * 1024  # 4 MiB — JPEG output gate
 
-_VOICE_MAX_AUDIO_BYTES: int = 2_000_000
+_VOICE_MAX_AUDIO_BYTES: int = 10_000_000
 _SUPPORTED_FORMATS = {'JPEG', 'PNG', 'GIF', 'WEBP'}
+_ORIG_HTTP_CONNECTION = http.client.HTTPConnection
+_AUTO_BACKEND_LOCK = None
+_AUTO_BACKEND_PROC = None
 
 
 # ---------------------------------------------------------------------------
@@ -269,29 +272,79 @@ def check_voice_service(
     return 'available'
 
 
+def _ensure_local_voicestudio_running(profile_id: str, wait_seconds: float = 35.0) -> None:
+    """Auto-start local VoiceStudio headless backend when real loopback 3900 is down."""
+    global _AUTO_BACKEND_LOCK, _AUTO_BACKEND_PROC
+    if http.client.HTTPConnection is not _ORIG_HTTP_CONNECTION:
+        # Unit tests mock HTTPConnection; never spawn real processes under mocks.
+        return
+    if check_voice_service(timeout=1.2, profile_id=profile_id) != 'unavailable':
+        return
+    import subprocess
+    import threading
+    import time
+    if _AUTO_BACKEND_LOCK is None:
+        _AUTO_BACKEND_LOCK = threading.Lock()
+    with _AUTO_BACKEND_LOCK:
+        if check_voice_service(timeout=1.0, profile_id=profile_id) != 'unavailable':
+            return
+        if _AUTO_BACKEND_PROC is None or _AUTO_BACKEND_PROC.poll() is not None:
+            loc = Path(os.environ.get('APPDATA', str(Path.home() / 'AppData/Roaming'))) / 'VoiceStudio' / 'runtime-location.json'
+            try:
+                runtime = Path(json.loads(loc.read_text(encoding='utf-8'))['root'])
+            except (OSError, ValueError, KeyError, TypeError):
+                return
+            py = runtime / 'project' / '.venv' / 'Scripts' / 'python.exe'
+            main_py = runtime / 'project' / 'backend' / 'main.py'
+            if not py.is_file() or not main_py.is_file():
+                return
+            env = os.environ.copy()
+            env.setdefault('OMNIVOICE_TTS_BACKEND', 'audiocpp')
+            env.setdefault('OMNIVOICE_AUDIOCPP_BACKEND', 'cpu')
+            env.setdefault('OMNIVOICE_AUDIOCPP_THREADS', '6')
+            env.setdefault('OMNIVOICE_PRELOAD_TTS', '0')
+            env.setdefault('OMNIVOICE_PRELOAD_CAPTURE_ASR', '0')
+            env.setdefault('OMNIVOICE_PRELOAD_WATERMARK', '0')
+            env.setdefault('OMP_NUM_THREADS', '4')
+            flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+            try:
+                _AUTO_BACKEND_PROC = subprocess.Popen(
+                    [str(py), '-u', 'main.py'],
+                    cwd=str(main_py.parent),
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                    creationflags=flags,
+                )
+                import atexit
+
+                def _cleanup_proc(p=_AUTO_BACKEND_PROC):
+                    if p is not None and p.poll() is None:
+                        p.terminate()
+
+                atexit.register(_cleanup_proc)
+            except OSError:
+                return
+    deadline = time.monotonic() + max(2.0, float(wait_seconds))
+    while time.monotonic() < deadline:
+        if check_voice_service(timeout=1.2, profile_id=profile_id) != 'unavailable':
+            return
+        if _AUTO_BACKEND_PROC is not None and _AUTO_BACKEND_PROC.poll() is not None:
+            return
+        time.sleep(0.5)
+
+
 def synthesize_voice(
     text: str,
     profile_id: str = VOICE_PROFILE_DEFAULT,
     timeout: int = 180,
 ) -> bytes:
-    """Synthesize *text* with VoiceStudio and return raw WAV bytes.
+    """Synthesize *text* (including spoken onomatopoeia & stage action sounds) with VoiceStudio.
 
     The profile is verified to exist on the server before the synthesis
     request is sent, so the server can never silently fall back to a
     different voice.
-
-    Args:
-        text: The text to speak.  Must be non-empty after stripping.
-        profile_id: VoiceStudio profile ID.  Defaults to
-            ``VOICE_PROFILE_DEFAULT``.
-        timeout: HTTP socket timeout in seconds.
-
-    Returns:
-        Valid 16-bit PCM WAV bytes.
-
-    Raises:
-        ChatError: If the service is unreachable, the profile is missing, or
-            the response is not valid audio.
     """
     if not isinstance(text, str) or not text.strip():
         raise ChatError('合成文字不能为空')
@@ -300,32 +353,21 @@ def synthesize_voice(
         raise ChatError('声线 ID 不能为空')
     profile_id = profile_id.strip()
 
-    form = urllib.parse.urlencode({
-        'text': text,
-        'profile_id': profile_id,
-        'language': 'Chinese',
-        'engine': 'audiocpp',
-    }).encode('utf-8')
+    from .speech_sfx import assemble_speech_and_sfx, build_speech_plan
 
+    plan = build_speech_plan(text)
+    if not plan:
+        raise ChatError('合成文字不能为空')
+
+    _ensure_local_voicestudio_running(profile_id)
+
+    # Verify profile exists before any synthesis request.
     connection = http.client.HTTPConnection(VOICE_HOST, VOICE_PORT, timeout=timeout)
     try:
-        # Verify profile before sending any synthesis request.
         profiles = _get_profiles(connection)
         if not any(isinstance(p, dict) and str(p.get('id')) == profile_id
                    for p in profiles):
             raise ChatError('所选声线不可用')
-
-        connection.request(
-            'POST', '/generate', body=form,
-            headers={'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'},
-        )
-        response = connection.getresponse()
-        try:
-            if response.status != 200:
-                raise ChatError('VoiceStudio 语音合成失败')
-            payload = response.read(_VOICE_MAX_AUDIO_BYTES + 1)
-        finally:
-            response.close()
     except ChatError:
         raise
     except (OSError, TimeoutError, http.client.HTTPException) as exc:
@@ -333,10 +375,58 @@ def synthesize_voice(
     finally:
         connection.close()
 
-    if len(payload) > _VOICE_MAX_AUDIO_BYTES:
+    def _synth_span(span_text: str) -> bytes:
+        form = urllib.parse.urlencode({
+            'text': span_text,
+            'profile_id': profile_id,
+            'language': 'Chinese',
+            'engine': 'audiocpp',
+        }).encode('utf-8')
+        conn = http.client.HTTPConnection(VOICE_HOST, VOICE_PORT, timeout=timeout)
+        try:
+            conn.request(
+                'POST', '/generate', body=form,
+                headers={'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'},
+            )
+            response = conn.getresponse()
+            try:
+                if response.status != 200:
+                    raise ChatError('VoiceStudio 语音合成失败')
+                chunk_bytes = response.read(_VOICE_MAX_AUDIO_BYTES + 1)
+            finally:
+                response.close()
+        except ChatError:
+            raise
+        except (OSError, TimeoutError, http.client.HTTPException) as exc:
+            raise ChatError('VoiceStudio 未连接或生成超时') from exc
+        finally:
+            conn.close()
+        if len(chunk_bytes) > _VOICE_MAX_AUDIO_BYTES:
+            raise ChatError('VoiceStudio 返回的音频过大')
+        _validate_wav(chunk_bytes)
+        return chunk_bytes
+
+    plain_single = (
+        len(plan) == 1
+        and plan[0].kind == 'tts'
+        and len(text) <= 120
+        and plan[0].value == text
+    )
+    if plain_single:
+        return _synth_span(text)
+
+    try:
+        combined = assemble_speech_and_sfx(
+            text, _synth_span, max_total_bytes=_VOICE_MAX_AUDIO_BYTES
+        )
+    except ChatError:
+        raise
+    except ValueError as exc:
+        raise ChatError(str(exc)) from exc
+    if len(combined) > _VOICE_MAX_AUDIO_BYTES:
         raise ChatError('VoiceStudio 返回的音频过大')
-    _validate_wav(payload)
-    return payload
+    _validate_wav(combined)
+    return combined
 
 
 def _validate_wav(payload: bytes) -> None:
