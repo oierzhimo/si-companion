@@ -7,7 +7,7 @@ const CONFIG = {
   formSubmitEndpoint: "https://formsubmit.co/ajax/2477160494@qq.com",
   githubRepo: "https://github.com/oierzhimo/si-companion",
   windowsDownloadUrl: "https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiDesktopPet-2.1.2-Windows-x64.zip",
-  sha256: "87fc41c69718b4c26731b2a88bc15e0e8298112aa5ad2c8d0878c2625f6a3a0d"
+  sha256: "f4b2246badec72a1aff137c3029d35a2a66107b3f24d44634f4e1caccecb656c"
 };
 
 const MOODS = {

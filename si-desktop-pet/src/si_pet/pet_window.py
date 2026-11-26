@@ -172,7 +172,9 @@ class PetWindow(QWidget):
         self.update()
 
     def paintEvent(self,event):
-        painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing);painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter=QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform);painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         s=self.ctrl.store['scale'];state,index=self.ctrl.animation();dpr=self.devicePixelRatioF()
         pix=self.ctrl.sprites.pixmap(state,index,s,dpr)
         if self.ctrl.store['shadow']:

@@ -41,6 +41,7 @@ ASSETS_DIR = REPO_ROOT / 'assets'
 MASTER_W = 1536
 MASTER_H = 1664
 BASELINE_BOTTOM_PX = 1616  # Matches existing desktop pet ground contact at y=1616/1664.
+FINISH_ENABLED = True  # Alpha-safe detail finishing pass (see finish_frame); --no-finish disables it.
 
 # OpenGL constants missing from some stripped bindings
 GL_TRIANGLES = 0x0004
@@ -1423,18 +1424,20 @@ def base_drape() -> Dict[str, Tuple[float, float, float]]:
     """Default natural Endfield stance matching authentic in-game silhouette & finger poise."""
     rots: Dict[str, Tuple[float, float, float]] = {}
     # Gentle relaxed A-stance matching game idle (-35° rest -> ~ -61° natural arm hang)
-    rots['左肩'] = (0.0, 0.0, -3.0)
-    rots['右肩'] = (0.0, 0.0, 3.0)
-    rots['左腕'] = (4.0, 0.0, -26.0)
-    rots['右腕'] = (4.0, 0.0, 26.0)
-    rots['左ひじ'] = (14.0, 0.0, -7.0)
-    rots['右ひじ'] = (14.0, 0.0, 7.0)
-    rots['左手首'] = (0.0, 0.0, 5.0)
-    rots['右手首'] = (0.0, 0.0, -5.0)
+    # Deliberately NOT mirror-perfect: real arms never hang identically. The right arm sits a touch
+    # further out and more bent, the left slightly forward & straighter, wrists relaxed unevenly.
+    rots['左肩'] = (0.0, 0.0, -3.2)
+    rots['右肩'] = (0.0, 0.0, 2.6)
+    rots['左腕'] = (3.2, 0.0, -25.2)
+    rots['右腕'] = (5.4, 0.0, 27.0)
+    rots['左ひじ'] = (12.5, 0.0, -6.4)
+    rots['右ひじ'] = (17.0, 0.0, 8.2)
+    rots['左手首'] = (-1.5, 0.0, 4.2)
+    rots['右手首'] = (1.8, 0.0, -6.2)
 
-    # Natural relaxed finger cascade on both hands (eliminates flat paddle hands!)
-    rots.update(hand_pose('L', 'relaxed'))
-    rots.update(hand_pose('R', 'relaxed'))
+    # Natural relaxed finger cascade; the dominant (right) hand curls a little deeper than the left.
+    rots.update(hand_pose('L', 'relaxed', scale=0.90))
+    rots.update(hand_pose('R', 'relaxed', scale=1.10))
 
     # Graceful S-curve drape for wide cape sleeves (hugging leg line softly)
     rots['L_sleeveD_01_jnt_1'] = (5.0, 0.0, 14.5)
@@ -1484,6 +1487,39 @@ def merge_rots(base: Dict[str, Tuple[float, float, float]], overrides: Dict[str,
     out = dict(base)
     out.update(overrides)
     return out
+
+
+def finish_frame(im: Image.Image, amount: float = 0.6, radius: float = 1.5) -> Image.Image:
+    if not FINISH_ENABLED:
+        return im
+    return _finish_frame(im, amount, radius)
+
+
+def _finish_frame(im: Image.Image, amount: float, radius: float) -> Image.Image:
+    """Alpha-safe detail finishing for a rendered RGBA frame.
+
+    The 1536x1664 masters are shrunk by Qt at runtime, which softens cloth weave, hair strands and the thin
+    face lines. A premultiplied (halo-free) unsharp mask with a small noise gate restores that micro-contrast
+    without ringing on the silhouette: alpha is left untouched and the effect fades out on partial-alpha edges.
+    """
+    from PIL import ImageFilter
+
+    rgba = im.convert('RGBA')
+    arr = np.asarray(rgba, dtype=np.float32)
+    alpha = arr[..., 3:4] / 255.0
+    pm = Image.fromarray(np.clip(arr[..., :3] * alpha, 0, 255).astype(np.uint8), 'RGB')
+    a_img = Image.fromarray(arr[..., 3].astype(np.uint8), 'L')
+    blur_pm = np.asarray(pm.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
+    blur_a = np.asarray(a_img.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)[..., None] / 255.0
+    blur_rgb = blur_pm / np.maximum(blur_a, 1e-3)
+    detail = arr[..., :3] - blur_rgb
+    # Noise gate (ignore <2 levels) + clamp (limit ringing on hard cel outlines).
+    detail = np.sign(detail) * np.maximum(np.abs(detail) - 2.0, 0.0)
+    detail = np.clip(detail, -34.0, 34.0)
+    weight = np.clip((alpha - 0.85) / 0.15, 0.0, 1.0)  # only fully-covered pixels are sharpened
+    out = np.clip(arr[..., :3] + amount * detail * weight, 0, 255)
+    result = np.concatenate([out, arr[..., 3:4]], axis=-1).astype(np.uint8)
+    return Image.fromarray(result, 'RGBA')
 
 
 def stride_skirt_drape(l_hip_deg: float, r_hip_deg: float) -> Dict[str, Tuple[float, float, float]]:
@@ -1619,29 +1655,40 @@ def build_state_specs() -> Dict[str, List[dict]]:
     specs: Dict[str, List[dict]] = {}
 
     # 1. idle (6 frames): 0=natural contrapposto stand, 1-3=smooth blink, 4-5=gentle chest breathe & tail S-wave
+    # The runtime plays frame 0 as the resting pose, 1-3 as a blink (body must NOT move), and 0-4-5-4-0 as one
+    # breath. So: blink frames share frame 0's body pose exactly (only the eyelids change), and the breath
+    # frames ramp 0 -> half -> full INHALE so the loop reads as a real chest rise, not a double exhale.
     idle_frames = []
     blink_map = [0.0, 0.55, 1.0, 0.38, 0.0, 0.0]
+    breath_map = [0.0, 0.0, 0.0, 0.0, 0.55, 1.0]
     for i in range(6):
-        ph = i / 6.0 * 2.0 * math.pi
-        breathe = math.sin(ph)
-        tail_wave = math.sin(ph - 0.6) * 4.5
+        br = breath_map[i]
+        tail_wave = br * 3.2
         r = merge_rots(base, {
-            '腰': (0.0, 1.2, 0.6),
-            '上半身': (-0.6 + breathe * 0.9, -1.2, -0.5),
-            '上半身2': (breathe * 0.7, -0.6, 0.0),
-            '左肩': (0.0, 0.0, -3.0 - breathe * 0.6),
-            '右肩': (0.0, 0.0, 3.0 + breathe * 0.6),
-            '首': (-0.8, 0.5, 0.4),
-            '頭': (-2.2 + breathe * 0.6, -1.8, -1.2),
-            '左足': (-1.0, 1.5, 0.8),
-            '右足': (1.2, -2.0, -0.8),
-            '右ひざ': (-2.5, 0.0, 0.0),
-            '右足首': (1.3, 0.0, 0.0),
+            # Contrapposto: weight on the left leg, pelvis drops on the free (right) side, spine and
+            # shoulders counter-tilt, head settles slightly into the tilt -> a relaxed S-curve, not a post.
+            '腰': (0.0, 1.8, 1.5),
+            '上半身': (-0.6 + br * 0.9, -2.0, -1.3),
+            '上半身2': (br * 0.8, -1.0, -0.7),
+            '左肩': (0.0, 0.0, -3.2 - br * 0.7),
+            '右肩': (0.0, 0.0, 2.6 + br * 0.9),
+            '首': (-0.8 + br * 0.2, 0.7, 0.6),
+            '頭': (-2.2 + br * 0.6, -2.2, -1.7),
+            '左足': (-1.0, 1.5, 0.6),
+            '右足': (1.8, -2.4, -1.0),
+            '右ひざ': (-3.4, 0.0, 0.0),
+            '右足首': (1.7, 0.0, 0.0),
+            # Soft secondary motion: cape sleeves & hair settle a hair's breadth as the chest rises.
+            'L_sleeveD_01_jnt_2': (1.5 + br * 0.7, 0.0, 4.0 + br * 0.6),
+            'R_sleeveD_01_jnt_2': (1.5 + br * 0.7, 0.0, -4.0 - br * 0.6),
+            'L_hairE_jnt3': (3.5 + br * 0.5, -0.8, -2.2),
+            'R_hairE_jnt3': (3.5 + br * 0.5, 0.8, 2.2),
             'tail_jnt6': (4.0, 14.0 + tail_wave * 0.6, 0.0),
             'tail_jnt8': (2.0, 10.0 + tail_wave, 0.0),
             'tail_jnt12': (-2.0, -4.0 - tail_wave * 0.7, 0.0),
         })
-        m = {'口角上げ': 0.16}
+        # A faint resting smile; a touch of cheek lift softens the otherwise blank stare.
+        m = {'口角上げ': 0.16, 'にこり': 0.07}
         if blink_map[i] > 0:
             m['まばたき'] = blink_map[i]
         idle_frames.append({'rots': r, 'morphs': m, 'yaw': 2.0})
@@ -2074,6 +2121,7 @@ def render_portraits_and_icon(model: PMXModel, samples: int = 8) -> List[Path]:
             draw_shadow=False,
         )
         dest = out_dir / f'{name}.png'
+        im = finish_frame(im, amount=0.5, radius=1.0)
         im.save(dest, optimize=True)
         written.append(dest)
 
@@ -2117,7 +2165,10 @@ def main() -> int:
     parser.add_argument('--portraits-only', action='store_true', help='Render portraits and icon only.')
     parser.add_argument('--samples', type=int, default=8)
     parser.add_argument('--cool-ms', type=int, default=20, help='Thermal safety yield in ms between frames.')
+    parser.add_argument('--no-finish', action='store_true', help='Skip the detail finishing (unsharp) pass.')
     args = parser.parse_args()
+    global FINISH_ENABLED
+    FINISH_ENABLED = not args.no_finish
 
     if not args.pmx.exists():
         print(f'ERROR: PMX not found: {args.pmx}', file=sys.stderr)
@@ -2157,7 +2208,7 @@ def main() -> int:
                 yaw_deg=spec.get('yaw', 0.0),
                 world_y_shift=spec.get('y_shift', 0.0),
             )
-            thumb = im.resize((tile_w, tile_h), Image.Resampling.LANCZOS)
+            thumb = finish_frame(im).resize((tile_w, tile_h), Image.Resampling.LANCZOS)
             cx = (idx % 4) * tile_w
             cy = (idx // 4) * tile_h
             sheet.alpha_composite(thumb, (cx, cy))
@@ -2193,6 +2244,7 @@ def main() -> int:
             bbox = im.getchannel('A').getbbox()
             if bbox is None or bbox[1] <= 0 or bbox[3] >= MASTER_H:
                 raise RuntimeError(f'Framing out of bounds for {f_rel}: bbox={bbox}')
+            im = finish_frame(im)
             dest = ASSETS_DIR / f_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             im.save(dest, optimize=True)
