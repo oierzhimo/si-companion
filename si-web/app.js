@@ -7,32 +7,70 @@ const CONFIG = {
   formSubmitEndpoint: "https://formsubmit.co/ajax/2477160494@qq.com",
   githubRepo: "https://github.com/oierzhimo/si-companion",
   windowsDownloadUrl: "https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiDesktopPet-2.1.2-Windows-x64.zip",
-  sha256: "d070e1b63d46db3c644eeb15955efedd5f58717e110204fbf128fe4a381478db"
+  sha256: "87fc41c69718b4c26731b2a88bc15e0e8298112aa5ad2c8d0878c2625f6a3a0d"
 };
 
 const MOODS = {
   happy: {
     img: "assets/happy.png",
+    state: "waving",
+    frames: 4,
+    fps: 6.5,
+    loop: 2, // Wave warmly twice then settle into natural breathing/blinking idle!
     zh: "（祀执笔轻轻落墨）哼，管理员，累了的话就先歇一小会儿吧。",
     en: "Administrator, I'm right here. If you're tired, take a short break."
   },
   neutral: {
     img: "assets/neutral.png",
-    zh: "我就安静待在屏幕角落，打游戏时绝不出声吵你。",
-    en: "I'll stay quietly in the corner of your screen—and mute automatically during games."
+    state: "idle",
+    frames: 6,
+    fps: 6,
+    loop: "idle_gaze",
+    zh: "我就安静待在屏幕角落，视线轻轻跟着你，打游戏时绝不出声吵你。",
+    en: "I'll stay quietly in the corner, gently follow your cursor, and mute automatically during games."
+  },
+  sitting: {
+    img: "assets/neutral.png",
+    state: "sitting",
+    frames: 4,
+    fps: 5.5,
+    loop: "hold_last",
+    zh: "坐一会儿。你继续忙你的，我就在桌边看着。",
+    en: "Sitting down for a bit. Keep going—I'm watching quietly from the edge."
   },
   blush: {
     img: "assets/blush.png",
+    state: "running",
+    frames: 6,
+    fps: 6.5,
+    loop: "hold_last",
     zh: "咳咳……给我的点心？那本姑娘就勉为其难收下啦。",
     en: "Ahem... A snack for me? Well then, I'll gladly accept it."
   },
   thinking: {
     img: "assets/thinking.png",
-    zh: "（指尖轻敲桌面）卡住的时候不用急，换个角度落笔试试？",
+    state: "review",
+    frames: 6,
+    fps: 6,
+    loop: "hold_last",
+    zh: "（指尖轻托下颌端详）卡住的时候不用急，换个角度落笔试试？",
     en: "No rush if you're stuck—try looking at it from a fresh angle."
+  },
+  walk: {
+    img: "assets/happy.png",
+    state: "walk-right",
+    frames: 8,
+    fps: 8,
+    loop: "infinite",
+    zh: "别急，我沿着窗口边缘随处散散步。",
+    en: "No hurry—I'm just taking a gentle stroll along your window ledges."
   },
   sleepy: {
     img: "assets/sleepy.png",
+    state: "sleeping",
+    frames: 4,
+    fps: 5,
+    loop: "hold_last",
     zh: "哈啊……稍微打个盹，有事点我一下就好。",
     en: "Yawn... Just resting my eyes for a bit. Click me anytime you need me."
   }
@@ -61,13 +99,17 @@ const I18N = {
     "hero.pill2": "✓ 耳机感知 + 游戏自动静音 TTS",
     "hero.pill3": "✓ API Key 仅留内存不写盘",
     "hero.pill4": "✓ GPL-3.0 开源免费",
-    "hero.previewTitle": "实时形象预览 · 点下方按钮试试互动",
+    "hero.previewTitle": "3D 实时灵动舞台 · 移动鼠标跟随视线",
+    "hero.modeFull": "半身特写",
+    "hero.modeBust": "全身动态",
 
     "mood.happy": "摸摸头",
-    "mood.neutral": "安静陪伴",
+    "mood.neutral": "视线跟随",
+    "mood.sitting": "坐下小憩",
     "mood.blush": "送点心",
-    "mood.thinking": "聊画/思考",
-    "mood.sleepy": "犯困休息",
+    "mood.thinking": "聊画/端详",
+    "mood.walk": "散步",
+    "mood.sleepy": "打盹",
 
     "intro.kicker": "项目简介",
     "intro.title": "什么是 si_accompany（小祀桌宠 v2.1.2）？",
@@ -275,13 +317,17 @@ const I18N = {
     "hero.pill2": "✓ Headphone & Game-Aware TTS",
     "hero.pill3": "✓ API Keys Stay in Memory Only",
     "hero.pill4": "✓ Free & Open Source (GPL-3.0)",
-    "hero.previewTitle": "Interactive Preview · Click a mood below",
+    "hero.previewTitle": "3D Live Stage · Move cursor for eye gaze",
+    "hero.modeFull": "Bust View",
+    "hero.modeBust": "Full 3D Live",
 
     "mood.happy": "Headpat",
-    "mood.neutral": "Quiet Mode",
-    "mood.blush": "Give Snack",
-    "mood.thinking": "Chat / Think",
-    "mood.sleepy": "Rest / Nap",
+    "mood.neutral": "Eye Gaze",
+    "mood.sitting": "Sit Down",
+    "mood.blush": "Snack",
+    "mood.thinking": "Chin Pose",
+    "mood.walk": "Stroll",
+    "mood.sleepy": "Nap",
 
     "intro.kicker": "INTRODUCTION",
     "intro.title": "What is si_accompany (Si Companion v2.1.2)?",
@@ -683,6 +729,10 @@ function applyLanguage(lang) {
   });
 
   mascotBubble.textContent = MOODS[currentMood][lang];
+  const sBtn = document.getElementById("stageModeBtn");
+  if (sBtn && typeof stageFullBody !== "undefined") {
+    sBtn.textContent = stageFullBody ? dict["hero.modeFull"] : dict["hero.modeBust"];
+  }
   if (lastSyncData) renderSyncData(lastSyncData);
 }
 
@@ -724,6 +774,177 @@ navLinks.querySelectorAll("a").forEach((link) => {
   });
 });
 
+// Live 3D Full-Body Sprite Stage & 16-Angle Gaze Engine
+const mascotStage = document.getElementById("mascotStage");
+const mascotWrap = document.getElementById("mascotWrap");
+const mascotBustBadge = document.getElementById("mascotBustBadge");
+const mascotBustImg = document.getElementById("mascotBustImg");
+const stageModeBtn = document.getElementById("stageModeBtn");
+
+let stageFullBody = true;
+let animTimer = null;
+let animFrameIdx = 0;
+let animLoopsDone = 0;
+let settledIdle = false;
+let gazeLookIdx = null;
+let nextBlinkAt = performance.now() + 3400;
+let blinkStep = -1;
+const preloadedStates = new Set();
+
+function spritePath(state, idx) {
+  return `assets/sprites/${state}/${String(idx).padStart(2, "0")}.webp`;
+}
+
+function preloadState(state, count) {
+  if (preloadedStates.has(state)) return;
+  preloadedStates.add(state);
+  for (let i = 0; i < count; i++) {
+    const im = new Image();
+    im.src = spritePath(state, i);
+  }
+}
+
+function updateStageModeUI() {
+  const dict = I18N[currentLang];
+  if (stageModeBtn) {
+    stageModeBtn.textContent = stageFullBody ? dict["hero.modeFull"] : dict["hero.modeBust"];
+  }
+  if (mascotBustBadge) {
+    mascotBustBadge.style.display = stageFullBody ? "block" : "none";
+  }
+  if (!stageFullBody) {
+    if (animTimer) {
+      clearInterval(animTimer);
+      animTimer = null;
+    }
+    mascotImg.className = "mascot-img portrait-only";
+    mascotImg.src = MOODS[currentMood].img;
+  } else {
+    startMoodStage(currentMood);
+  }
+}
+
+function startMoodStage(mood) {
+  const spec = MOODS[mood] || MOODS.happy;
+  if (mascotBustImg) mascotBustImg.src = spec.img;
+  if (!stageFullBody) {
+    mascotImg.className = "mascot-img portrait-only";
+    mascotImg.src = spec.img;
+    return;
+  }
+  preloadState(spec.state, spec.frames);
+  preloadState("idle", 6);
+  if (animTimer) clearInterval(animTimer);
+  animFrameIdx = 0;
+  animLoopsDone = 0;
+  settledIdle = spec.loop === "idle_gaze";
+  blinkStep = -1;
+  nextBlinkAt = performance.now() + 2600 + Math.random() * 2400;
+
+  mascotImg.className =
+    spec.state === "sleeping"
+      ? "mascot-img sleep-breathe"
+      : spec.state === "walk-right"
+      ? "mascot-img no-breathe"
+      : "mascot-img";
+
+  mascotImg.src = settledIdle ? spritePath("idle", 0) : spritePath(spec.state, 0);
+
+  const intervalMs = Math.round(1000 / (spec.fps || 6));
+  animTimer = setInterval(() => {
+    if (document.hidden || !stageFullBody) return;
+    const now = performance.now();
+
+    if (settledIdle) {
+      // Periodic natural anime blink (frames 1 -> 2 -> 3 -> 0) or gentle breathe (4 -> 5 -> 0)
+      if (blinkStep >= 0) {
+        const seq = [1, 2, 3, 0];
+        mascotImg.src = spritePath("idle", seq[Math.min(seq.length - 1, blinkStep)]);
+        blinkStep++;
+        if (blinkStep >= seq.length) {
+          blinkStep = -1;
+          nextBlinkAt = now + 3200 + Math.random() * 3200;
+        }
+        return;
+      }
+      if (now >= nextBlinkAt) {
+        if (Math.random() < 0.72) {
+          blinkStep = 0;
+          mascotImg.src = spritePath("idle", 1);
+          return;
+        } else {
+          // Soft chest breath frame
+          mascotImg.src = spritePath("idle", 4);
+          nextBlinkAt = now + 2800 + Math.random() * 2600;
+          return;
+        }
+      }
+      if (gazeLookIdx !== null) {
+        mascotImg.src = spritePath("look", gazeLookIdx);
+      } else {
+        mascotImg.src = spritePath("idle", 0);
+      }
+      return;
+    }
+
+    animFrameIdx++;
+    if (animFrameIdx >= spec.frames) {
+      animLoopsDone++;
+      if (spec.loop === "infinite") {
+        animFrameIdx = 0;
+      } else if (typeof spec.loop === "number") {
+        if (animLoopsDone >= spec.loop) {
+          settledIdle = true;
+          mascotImg.src = spritePath("idle", 0);
+          return;
+        }
+        animFrameIdx = 0;
+      } else if (spec.loop === "hold_last") {
+        animFrameIdx = spec.frames - 1;
+        clearInterval(animTimer);
+        animTimer = null;
+        mascotImg.src = spritePath(spec.state, animFrameIdx);
+        return;
+      }
+    }
+    mascotImg.src = spritePath(spec.state, animFrameIdx);
+  }, intervalMs);
+}
+
+if (stageModeBtn) {
+  stageModeBtn.addEventListener("click", () => {
+    stageFullBody = !stageFullBody;
+    updateStageModeUI();
+  });
+}
+
+if (mascotStage && mascotWrap) {
+  mascotStage.addEventListener("mousemove", (e) => {
+    if (!stageFullBody || !settledIdle) return;
+    preloadState("look", 16);
+    const rect = mascotWrap.getBoundingClientRect();
+    const headX = rect.left + rect.width * 0.5;
+    const headY = rect.top + rect.height * 0.24;
+    const dx = e.clientX - headX;
+    const dy = e.clientY - headY;
+    if (Math.hypot(dx, dy) < 18) {
+      gazeLookIdx = null;
+      return;
+    }
+    const deg = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+    gazeLookIdx = Math.floor((deg + 11.25) / 22.5) % 16;
+  });
+
+  mascotStage.addEventListener("mouseleave", () => {
+    gazeLookIdx = null;
+  });
+
+  mascotWrap.addEventListener("click", () => {
+    const patBtn = document.querySelector('.mood-btn[data-mood="happy"]');
+    if (patBtn) patBtn.click();
+  });
+}
+
 moodButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     const mood = btn.getAttribute("data-mood");
@@ -731,8 +952,8 @@ moodButtons.forEach((btn) => {
     currentMood = mood;
     moodButtons.forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
-    mascotImg.src = MOODS[mood].img;
     mascotBubble.textContent = MOODS[mood][currentLang];
+    startMoodStage(mood);
   });
 });
 
@@ -863,6 +1084,7 @@ feedbackForm.addEventListener("submit", async (e) => {
 // Initialize
 initTheme();
 applyLanguage(currentLang);
+startMoodStage(currentMood);
 refreshSyncStatus();
 setInterval(() => {
   if (liveSyncOnline) refreshSyncStatus();

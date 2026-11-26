@@ -389,17 +389,35 @@ code {
 .window-dots i:nth-child(3) { background: #52c98e; }
 
 .mascot-status {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
+.stage-mode-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.22rem 0.62rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.stage-mode-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .mascot-stage {
-  padding: 1.4rem 1.4rem 0.6rem;
+  padding: 1.15rem 1.2rem 0.45rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   background:
-    radial-gradient(circle at 50% 62%, var(--accent-soft), transparent 62%),
+    radial-gradient(circle at 50% 60%, var(--accent-soft), transparent 64%),
     var(--surface);
 }
 
@@ -408,39 +426,89 @@ code {
   background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 0.7rem 1rem;
-  font-size: 0.92rem;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.9rem;
   color: var(--text);
   text-align: center;
-  max-width: 92%;
-  min-height: 3.1rem;
+  max-width: 94%;
+  min-height: 3.0rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.35rem;
   transition: opacity 0.2s ease;
 }
 
 .mascot-avatar-wrap {
-  width: 260px;
-  height: 260px;
+  position: relative;
+  width: 300px;
+  height: 325px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  cursor: pointer;
+  user-select: none;
 }
 
 .mascot-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.12));
+  transform-origin: 50% 96%;
+  filter: drop-shadow(0 12px 22px rgba(18, 32, 26, 0.16));
+  animation: breatheStand 3.4s ease-in-out infinite;
+  transition: opacity 0.12s ease;
+}
+
+.mascot-img.portrait-only {
+  transform-origin: 50% 50%;
   animation: floatY 3.8s ease-in-out infinite;
-  transition: transform 0.25s ease;
+}
+
+.mascot-img.sleep-breathe {
+  animation: breatheSleep 4.6s ease-in-out infinite;
+}
+
+.mascot-img.no-breathe {
+  animation: none;
+}
+
+.mascot-bust-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 8px;
+  width: 58px;
+  height: 58px;
+  padding: 2px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border: 1.5px solid var(--amber);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.mascot-bust-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+@keyframes breatheStand {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.0065); }
+}
+
+@keyframes breatheSleep {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.009); }
 }
 
 @keyframes floatY {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-5px); }
 }
 
 .mood-bar {

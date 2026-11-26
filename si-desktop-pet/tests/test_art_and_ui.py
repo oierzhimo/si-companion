@@ -115,6 +115,44 @@ class ArtAndBehaviorTests(unittest.TestCase):
         finally:
             dlg.close()
 
+    def test_bubble_mood_portraits_and_smooth_pose_crossfade(self):
+        from si_pet.pet_window import Bubble
+        self.ctrl.state = 'sleeping'
+        self.assertEqual(Bubble._mood_for(self.pet, '稍微打个盹'), 'sleepy')
+        self.ctrl.state = 'failed'
+        self.assertEqual(Bubble._mood_for(self.pet, '连接异常'), 'troubled')
+        self.ctrl.state = 'review'
+        self.assertEqual(Bubble._mood_for(self.pet, '让我想想'), 'thinking')
+        self.ctrl.state = 'idle'
+        self.ctrl.action = 'idle'
+        self.assertEqual(Bubble._mood_for(self.pet, '给我的点心？勉为其难收下啦'), 'blush')
+        self.ctrl.state = 'waving'
+        self.assertEqual(Bubble._mood_for(self.pet, '找我？'), 'happy')
+
+        # Exercise PetWindow cross-fade & stationary breathing render path across poses
+        floor = next(p for p in self.ctrl.physics.platforms if p.floor)
+        self.ctrl.physics.body.x = (floor.left + floor.right) / 2
+        self.ctrl.physics.body.y = floor.top
+        self.ctrl.physics.body.support = floor.key
+        for action in ('idle', 'wave', 'sit', 'sleep', 'review'):
+            self.ctrl.perform(action, announce=False)
+            self.pet.tick()
+            grabbed = self.pet.grab()
+            self.assertFalse(grabbed.isNull())
+        self.assertIsNotNone(self.pet._cur_anim)
+
+    def test_all_14_animation_states_have_clean_framing(self):
+        self.assertEqual(len(self.sprites.frames), 14)
+        for state, paths in self.sprites.frames.items():
+            self.assertGreater(len(paths), 0, state)
+            src0 = self.sprites.source(state, 0)
+            self.assertEqual((src0.width(), src0.height()), (1536, 1664), state)
+            bounds = self.sprites.mask(state, 0, 1).boundingRect()
+            self.assertGreater(bounds.width(), 20, state)
+            self.assertGreater(bounds.height(), 40, state)
+            self.assertGreaterEqual(bounds.top(), 1, state)
+            self.assertLessEqual(bounds.bottom(), 206, state)
+
 
 if __name__ == '__main__':
     unittest.main()

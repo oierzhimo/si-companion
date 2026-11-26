@@ -13,6 +13,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+mimetypes.add_type('image/webp', '.webp')
 import os
 from pathlib import Path
 import sys
@@ -254,7 +255,10 @@ class SiWebHandler(SimpleHTTPRequestHandler):
         data = candidate.read_bytes()
         self.send_response(200)
         self.send_header('Content-Type', ctype or 'application/octet-stream')
-        self.send_header('Cache-Control', 'no-cache')
+        if candidate.suffix.lower() in {'.png', '.ico', '.jpg', '.jpeg', '.webp', '.svg'}:
+            self.send_header('Cache-Control', 'public, max-age=86400')
+        else:
+            self.send_header('Cache-Control', 'no-cache')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
         self.wfile.write(data)

@@ -84,31 +84,37 @@
           <div class="mascot-card">
             <div class="mascot-header">
               <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="mascot-status" data-i18n="hero.previewTitle">实时形象预览 · 点下方按钮试试互动</span>
+              <span class="mascot-status" data-i18n="hero.previewTitle">3D 实时灵动舞台 · 移动鼠标跟随视线</span>
+              <button type="button" class="stage-mode-btn" id="stageModeBtn" data-i18n="hero.modeFull">半身特写</button>
             </div>
 
-            <div class="mascot-stage">
+            <div class="mascot-stage" id="mascotStage">
               <div class="speech-bubble" id="mascotBubble" role="status" aria-live="polite">
                 （祀执笔轻轻落墨）哼，管理员，累了的话就先歇一小会儿吧。
               </div>
-              <div class="mascot-avatar-wrap">
+              <div class="mascot-avatar-wrap" id="mascotWrap">
                 <img
                   id="mascotImg"
-                  src="assets/happy.png"
-                  alt="小祀桌宠立绘"
-                  class="mascot-img"
-                  width="320"
-                  height="320"
+                  src="assets/sprites/idle/00.webp"
+                  alt="小祀桌宠 3D 实时形象"
+                  class="mascot-img full-body"
+                  width="300"
+                  height="325"
                 />
+                <div class="mascot-bust-badge" id="mascotBustBadge" title="当前神态特写">
+                  <img id="mascotBustImg" src="assets/happy.png" alt="神态特写" width="54" height="54" />
+                </div>
               </div>
             </div>
 
             <div class="mood-bar" role="group" aria-label="Character mood preview">
               <button type="button" class="mood-btn active" data-mood="happy" data-i18n="mood.happy">摸摸头</button>
-              <button type="button" class="mood-btn" data-mood="neutral" data-i18n="mood.neutral">安静陪伴</button>
+              <button type="button" class="mood-btn" data-mood="neutral" data-i18n="mood.neutral">视线跟随</button>
+              <button type="button" class="mood-btn" data-mood="sitting" data-i18n="mood.sitting">坐下小憩</button>
               <button type="button" class="mood-btn" data-mood="blush" data-i18n="mood.blush">送点心</button>
-              <button type="button" class="mood-btn" data-mood="thinking" data-i18n="mood.thinking">聊画/思考</button>
-              <button type="button" class="mood-btn" data-mood="sleepy" data-i18n="mood.sleepy">犯困休息</button>
+              <button type="button" class="mood-btn" data-mood="thinking" data-i18n="mood.thinking">聊画/端详</button>
+              <button type="button" class="mood-btn" data-mood="walk" data-i18n="mood.walk">散步</button>
+              <button type="button" class="mood-btn" data-mood="sleepy" data-i18n="mood.sleepy">打盹</button>
             </div>
           </div>
         </div>
@@ -284,7 +290,7 @@
             </p>
             <div class="dl-meta">
               <span><strong data-i18n="dl.fileLabel">文件名：</strong><code>SiDesktopPet-2.1.2-Windows-x64.zip</code></span>
-              <span><strong data-i18n="dl.sizeLabel">大小：</strong>~122 MB</span>
+              <span><strong data-i18n="dl.sizeLabel">大小：</strong>~127 MB</span>
             </div>
 
             <div class="dl-actions">
@@ -312,7 +318,7 @@
 
             <div class="checksum-box">
               <span class="checksum-label">SHA-256:</span>
-              <code id="sha256Text">d070e1b63d46db3c644eeb15955efedd5f58717e110204fbf128fe4a381478db</code>
+              <code id="sha256Text">87fc41c69718b4c26731b2a88bc15e0e8298112aa5ad2c8d0878c2625f6a3a0d</code>
               <button type="button" class="copy-mini-btn" id="copyShaBtn" data-i18n="dl.copy">复制</button>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import math
 import time
 from collections import deque
 from PySide6.QtCore import Qt,QPoint,QTimer,QRectF,QRect
@@ -32,10 +33,23 @@ class Bubble(QWidget):
     def setWindowOpacity(self,opacity):
         self._base_opacity=float(opacity)
         super().setWindowOpacity(self._base_opacity*self._fade)
+    @staticmethod
+    def _mood_for(pet, display_text):
+        st=getattr(pet.ctrl,'state','idle')
+        act=getattr(pet.ctrl,'action','idle')
+        if st=='sleeping' or act=='sleep':return 'sleepy'
+        if st=='failed' or act=='failed':return 'troubled'
+        if st=='review' or act=='review':return 'thinking'
+        if any(w in display_text for w in ('点心','尝','茶','勉为其难')) or time.monotonic()-getattr(pet.ctrl,'last_feed',0)<3.0:
+            return 'blush'
+        if st in ('waving','jumping','running') or act in ('wave','jump','special'):
+            return 'happy'
+        return 'neutral'
     def speak(self,text,pet):
         from .speech_sfx import clean_bubble_text
         display_text=clean_bubble_text(text) or text
-        pix=pet.ctrl.sprites.portrait('happy',32) if hasattr(pet.ctrl.sprites,'portrait') else None
+        mood=self._mood_for(pet,display_text)
+        pix=pet.ctrl.sprites.portrait(mood,32) if hasattr(pet.ctrl.sprites,'portrait') else None
         has_av=pix is not None and not pix.isNull()
         if has_av:
             self.avatar.setPixmap(pix);self.avatar.move(14,14);self.avatar.show()
@@ -80,6 +94,7 @@ class PetWindow(QWidget):
         self._last_tick=time.monotonic();self._press=None;self._drag=False;self._samples=deque(maxlen=12)
         self._size=None;self._flags=None
         self._fullscreen_check_at=0
+        self._cur_anim=None;self._prev_anim=None;self._blend_until=0.0
         self.setWindowTitle('祀 · 桌面伙伴')
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
@@ -131,12 +146,25 @@ class PetWindow(QWidget):
         self.move(round(b.x-96*s),round(b.y-202*s))
         if self.bubble.isVisible():self.bubble.follow(self)
         state,index=self.ctrl.animation()
+        cur=(state,index)
+        if self._cur_anim is not None and cur!=self._cur_anim:
+            prev_st,prev_idx=self._cur_anim
+            # Cross-fade smoothly across state changes or wider gaze jumps (never blur brisk walk/blink steps)
+            if prev_st!=state or (state=='look' and min((index-prev_idx)%16,(prev_idx-index)%16)>1):
+                self._prev_anim=self._cur_anim;self._blend_until=now+0.09
+        self._cur_anim=cur
+        blending=self._prev_anim is not None and now<self._blend_until
+        if not blending:self._prev_anim=None
         outline=self.ctrl.store['outline'] or self.underMouse() and not self.ctrl.store['clickthrough']
         shadow=self.ctrl.store['shadow'] and bool(b.support)
-        key=(state,index,s,outline,shadow)
+        key=(state,index,self._prev_anim if blending else None,s,outline,shadow)
         if key!=self._frame_key:
             self._frame_key=key
             region=self.ctrl.sprites.mask(state,index,s)
+            if blending and self._prev_anim is not None:
+                region=region.united(self.ctrl.sprites.mask(self._prev_anim[0],self._prev_anim[1],s))
+            # Allow 2px headroom for subtle grounded breathing micro-motion on stationary poses
+            region=region.united(region.translated(0,-2))
             if outline:
                 for dx,dy in [(-2,0),(2,0),(0,-2),(0,2)]:region=region.united(region.translated(dx,dy))
             if shadow:region=region.united(QRegion(QRect(round(62*s),round(197*s),round(68*s),round(7*s)),QRegion.RegionType.Ellipse))
@@ -144,9 +172,9 @@ class PetWindow(QWidget):
         self.update()
 
     def paintEvent(self,event):
-        painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        s=self.ctrl.store['scale'];state,index=self.ctrl.animation()
-        pix=self.ctrl.sprites.pixmap(state,index,s,self.devicePixelRatioF())
+        painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing);painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        s=self.ctrl.store['scale'];state,index=self.ctrl.animation();dpr=self.devicePixelRatioF()
+        pix=self.ctrl.sprites.pixmap(state,index,s,dpr)
         if self.ctrl.store['shadow']:
             b=self.ctrl.physics.body
             if b.support:
@@ -164,11 +192,31 @@ class PetWindow(QWidget):
                 painter.drawEllipse(QRectF(sx-4*s,sy-1*s,sw+8*s,sh+2*s))
                 painter.setBrush(QColor(12,24,20,shadow_alpha))
                 painter.drawEllipse(QRectF(sx,sy,sw,sh))
+        now=time.monotonic()
+        # Subtle organic breathing anchored at ground contact for settled stationary poses
+        breathe_sy=1.0
+        if (state=='sitting' and index==3) or (state=='sleeping' and index==3) or (state in ('idle','look') and index==0):
+            freq=1.35 if state=='sleeping' else 2.05
+            amp=0.0065 if state=='sleeping' else 0.0045
+            breathe_sy=1.0+amp*(0.5+0.5*math.sin(now*freq))
+        painter.save()
+        if abs(breathe_sy-1.0)>1e-4:
+            anchor_y=202.0*s
+            painter.translate(0.0,anchor_y*(1.0-breathe_sy))
+            painter.scale(1.0,breathe_sy)
         if self.ctrl.store['outline'] or self.underMouse() and not self.ctrl.store['clickthrough']:
-            tinted=self.ctrl.sprites.outline(state,index,s,self.devicePixelRatioF());painter.setOpacity(.65)
+            tinted=self.ctrl.sprites.outline(state,index,s,dpr);painter.setOpacity(.65)
             for dx,dy in [(-2,0),(2,0),(0,-2),(0,2)]:painter.drawPixmap(dx,dy,tinted)
             painter.setOpacity(1)
-        painter.drawPixmap(0,0,pix)
+        if self._prev_anim is not None and now<self._blend_until:
+            alpha=max(0.0,min(1.0,1.0-(self._blend_until-now)/0.09))
+            prev_pix=self.ctrl.sprites.pixmap(self._prev_anim[0],self._prev_anim[1],s,dpr)
+            painter.setOpacity(1.0-alpha);painter.drawPixmap(0,0,prev_pix)
+            painter.setOpacity(alpha);painter.drawPixmap(0,0,pix)
+            painter.setOpacity(1.0)
+        else:
+            painter.drawPixmap(0,0,pix)
+        painter.restore()
 
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.LeftButton:
