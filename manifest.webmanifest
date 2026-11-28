@@ -1,0 +1,25 @@
+{
+  "name": "小祀 · Si Companion",
+  "short_name": "小祀 · Si",
+  "description": "《明日方舟：终末地》祀跨端桌面与随身陪伴伙伴 — 支持 Windows、Mac mini 与 iPhone/iPad 独立 PWA 同步与 Soul Engine V1.2 对话。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#141e19",
+  "background_color": "#0f1613",
+  "icons": [
+    {
+      "src": "assets/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
