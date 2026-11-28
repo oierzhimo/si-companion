@@ -72,8 +72,9 @@ class VoiceEngine(QObject):
         if not allowed and self._playing:
             self._playing=False
             if winsound is not None:winsound.PlaySound(None,0)
+            else:native.stop_wav_playback()
             self.status.emit(reason)
-        elif allowed and not self._auto_warmed and winsound is not None:
+        elif allowed and not self._auto_warmed and (winsound is not None or native.has_audio_playback()):
             self._auto_warmed=True
             self.start_backend()
 
@@ -116,13 +117,25 @@ class VoiceEngine(QObject):
             already_running=self.backend is not None and self.backend.state()!=QProcess.ProcessState.NotRunning
         if already_running:
             self.status.emit('VoiceStudio 引擎正在启动…');return
-        root=Path(os.environ.get('APPDATA',str(Path.home()/'AppData/Roaming')))/'VoiceStudio'/'runtime-location.json'
-        try:runtime=Path(json.loads(root.read_text(encoding='utf-8'))['root'])
-        except (OSError,ValueError,KeyError,TypeError):
+        candidates=[
+            Path(os.environ.get('APPDATA',str(Path.home()/'AppData/Roaming')))/'VoiceStudio'/'runtime-location.json',
+            Path.home()/'Library'/'Application Support'/'VoiceStudio'/'runtime-location.json',
+        ]
+        runtime=None
+        for root in candidates:
+            try:
+                runtime=Path(json.loads(root.read_text(encoding='utf-8'))['root'])
+                break
+            except (OSError,ValueError,KeyError,TypeError):
+                continue
+        if runtime is None:
             self.status.emit('未找到 VoiceStudio 本地运行环境');return
-        python=runtime/'project/.venv/Scripts/python.exe'
+        python=next(
+            (p for p in (runtime/'project/.venv/Scripts/python.exe',runtime/'project/.venv/bin/python') if p.is_file()),
+            None,
+        )
         backend=runtime/'project/backend/main.py'
-        if not python.is_file() or not backend.is_file():
+        if python is None or not backend.is_file():
             self.status.emit('VoiceStudio 本地引擎文件不完整');return
         process=QProcess(self);process.setProgram(str(python));process.setArguments(['-u','main.py'])
         process.setWorkingDirectory(str(backend.parent));process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
@@ -160,7 +173,7 @@ class VoiceEngine(QObject):
         self.status.emit('VoiceStudio 引擎已停止')
 
     def speak(self,text,*,force_audition=False):
-        if winsound is None:return
+        if winsound is None and not native.has_audio_playback():return
         if force_audition:
             if native.running_blocked_game(extra_names=self._store_get('voice_blocked_games','')):
                 self.status.emit('检测到本地游戏运行中 · 已暂停试听以免打扰');return
@@ -203,7 +216,7 @@ class VoiceEngine(QObject):
     def _play(self,path):
         force_once=getattr(self,'_force_play_once',False)
         self._force_play_once=False
-        if winsound is None:return
+        if winsound is None and not native.has_audio_playback():return
         if not force_once and not self.effective_enabled(force_refresh=True):
             self.status.emit(self.environment_summary());return
         try:
@@ -211,7 +224,10 @@ class VoiceEngine(QObject):
             if volume<=0:return
             playback=scaled_wav(path,volume)
             self._playing=True
-            winsound.PlaySound(str(playback),winsound.SND_FILENAME|winsound.SND_ASYNC|winsound.SND_NODEFAULT)
+            if winsound is not None:
+                winsound.PlaySound(str(playback),winsound.SND_FILENAME|winsound.SND_ASYNC|winsound.SND_NODEFAULT)
+            else:
+                native.play_wav_file(playback,async_play=True)
             self.status.emit('已同步播放语音与动作声 · 可随时关闭')
         except (OSError,wave.Error) as exc:
             self._playing=False;self._show_failure(f'播放失败：{exc}')
@@ -225,6 +241,7 @@ class VoiceEngine(QObject):
         self._playing=False
         if hasattr(self,'_env_timer'):self._env_timer.stop()
         if winsound is not None:winsound.PlaySound(None,0)
+        else:native.stop_wav_playback()
         with self._probe_lock:
             self._backend_shutdown=True
             self._probe_generation+=1

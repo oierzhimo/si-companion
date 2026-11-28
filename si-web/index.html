@@ -2,9 +2,15 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>小祀 · Si Companion — 桌面陪伴伙伴 (v2.1.2)</title>
-  <meta name="description" content="小祀（SiDesktopPet v2.1.2）是一款面向新手的开源桌面陪伴伙伴，支持 Windows 绿色便携运行、Soul Engine V1.2 数字人格、耳机/游戏感知智能语音（含拟声词与动作音效）及跨端实时聊天同步。" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>小祀 · Si Companion — 跨端桌面与随身陪伴伙伴 (v2.1.2)</title>
+  <meta name="description" content="小祀（Si Companion v2.1.2）是一款开源同人陪伴伙伴，支持 Windows 绿色便携、Mac mini (macOS Apple Silicon / Intel)、iOS (PWA + SwiftUI) 及跨端聊天同步。" />
+  <meta name="theme-color" content="#141e19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="小祀 · Si" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
   <link rel="icon" href="assets/si.ico" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -53,26 +59,26 @@
         <div class="hero-copy">
           <div class="eyebrow">
             <span class="dot"></span>
-            <span data-i18n="hero.badge">Windows 10/11 绿色便携版 · v2.1.2 全新发布</span>
+            <span data-i18n="hero.badge">Windows / Mac mini / iOS 跨端支持 · v2.1.2 全新发布</span>
           </div>
-          <h1 data-i18n="hero.title">小祀 · 陪在你桌面上的灵动伙伴</h1>
+          <h1 data-i18n="hero.title">小祀 · 陪在你桌面与随身屏幕的伙伴</h1>
           <p class="hero-subtitle" data-i18n="hero.subtitle">
-            无需编程基础、无需安装 Python，解压双击就能把小祀请到桌面。v2.1.2 升级 3D 防穿模水墨金玉视觉、Soul Engine V1.2 数字人格，并在接入耳机且未开 Apex / 彩六等本地游戏时自动同步输出语音、拟声词与动作音效。
+            支持 Windows 便携解压、Mac mini（Apple Silicon / Intel）原生桌宠与 iPhone/iPad 独立 PWA / SwiftUI 伴侣。v2.1.2 升级 3D 防穿模与对立平衡微动态、Soul Engine V1.2 数字人格，并在接入耳机且未开游戏时同步输出语音、拟声词与动作音效。
           </p>
 
           <div class="hero-cta">
             <a href="#download" class="btn btn-primary">
               <span aria-hidden="true">⬇</span>
-              <span data-i18n="hero.ctaDownload">立即下载 Windows 版 (v2.1.2)</span>
+              <span data-i18n="hero.ctaDownload">获取全平台客户端 (v2.1.2)</span>
             </a>
             <a href="#sync" class="btn btn-secondary">
               <span aria-hidden="true">✨</span>
-              <span data-i18n="hero.ctaSync">实时聊天与陪伴同步</span>
+              <span data-i18n="hero.ctaSync">实时聊天与 iOS 随身模式</span>
             </a>
           </div>
 
           <ul class="trust-pills">
-            <li data-i18n="hero.pill1">✓ 免安装绿色解压即用</li>
+            <li data-i18n="hero.pill1">✓ Windows / Mac mini / iOS 多端互通</li>
             <li data-i18n="hero.pill2">✓ 耳机感知 + 游戏自动静音 TTS</li>
             <li data-i18n="hero.pill3">✓ API Key 仅留内存不写盘</li>
             <li data-i18n="hero.pill4">✓ GPL-3.0 开源免费</li>
@@ -229,6 +235,39 @@
             <span id="syncVoiceText" data-i18n="sync.voiceDefault">智能语音策略：接入耳机且未运行本地游戏时默认语音+文本同步输出</span>
           </div>
 
+          <!-- Multi-device Sync Node & iOS Standalone Direct AI Controls -->
+          <div class="ios-connect-bar">
+            <div class="ios-connect-summary">
+              <strong data-i18n="sync.connectTitle">📱 iPhone / iPad / Mac 跨端连接</strong>
+              <span class="sync-hint" id="syncEndpointState" data-i18n="sync.connectSub">可填入 Mac mini / Windows 实时节点 URL 同步记录，或开启 iOS 独立直连 AI（Key 仅留内存）。</span>
+            </div>
+            <button type="button" class="pill-btn" id="toggleSyncConfigBtn" data-i18n="sync.configBtn">⚙ 连接与 iOS 直连设置</button>
+          </div>
+
+          <div class="ios-drawer" id="syncConfigDrawer" hidden>
+            <div class="ios-drawer-grid">
+              <div class="form-group">
+                <label for="syncNodeUrl" data-i18n="sync.nodeUrlLabel">Mac mini / Windows 同步节点 URL（例如 https://xxx.lhr.life 或 http://192.168.1.x:8765）</label>
+                <div class="inline-input-row">
+                  <input type="url" id="syncNodeUrl" placeholder="留空则使用当前网页同源或静态快照" data-i18n-placeholder="sync.nodeUrlPlaceholder" />
+                  <button type="button" class="pill-btn" id="bindNodeBtn" data-i18n="sync.bindBtn">连接节点</button>
+                  <button type="button" class="pill-btn" id="clearNodeBtn" data-i18n="sync.clearBtn">重置</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="inline-check">
+                  <input type="checkbox" id="directAiToggle" />
+                  <span data-i18n="sync.directAiLabel">开启 iOS / 浏览器独立直连 AI 对话（无宿主电脑在线时可用，API Key 绝不写盘）</span>
+                </label>
+                <div class="direct-ai-fields" id="directAiFields">
+                  <input type="url" id="directAiBase" value="https://api.deepseek.com/v1" placeholder="API Base URL (如 https://api.deepseek.com/v1)" />
+                  <input type="text" id="directAiModel" value="deepseek-chat" placeholder="模型名 (如 deepseek-chat)" />
+                  <input type="password" id="directAiKey" autocomplete="off" placeholder="sk-... API Key（仅保留在当前页面内存）" data-i18n-placeholder="sync.directKeyPlaceholder" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="sync-columns">
             <!-- Synced Chat Panel -->
             <div class="sync-panel">
@@ -318,14 +357,43 @@
 
             <div class="checksum-box">
               <span class="checksum-label">SHA-256:</span>
-              <code id="sha256Text">f4b2246badec72a1aff137c3029d35a2a66107b3f24d44634f4e1caccecb656c</code>
+              <code id="sha256Text">5ae7484af8d835ca028d78c8a16917e504225414e4f13666cb5b07ce53f5b7d4</code>
               <button type="button" class="copy-mini-btn" id="copyShaBtn" data-i18n="dl.copy">复制</button>
             </div>
           </div>
         </div>
 
-        <!-- Secondary Platforms -->
+        <!-- Secondary Platforms: Mac mini, iOS, Android, HarmonyOS -->
         <div class="platform-grid">
+          <div class="platform-card platform-card-highlight">
+            <div class="platform-top">
+              <span class="platform-icon" aria-hidden="true">🖥️</span>
+              <div>
+                <h4 data-i18n="dl.macTitle">Mac mini / macOS 版 (v2.1.2)</h4>
+                <span class="platform-sub">Apple Silicon (M1–M4) & Intel · macOS 13+</span>
+              </div>
+            </div>
+            <p data-i18n="dl.macDesc">支持 Cocoa 置顶、深浅主题与 AppleInterfaceStyle 自动适配、system_profiler 耳机检测、afplay 语音音效与登录启动（LaunchAgents）。下载下方 Mac mini 源码便携包解压后双击 start_macos.command 即可运行，或执行 bash tools/build_macos.sh 生成 .app / .dmg。</p>
+            <div class="platform-links">
+              <a href="https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiDesktopPet-2.1.2-macOS-Source.zip" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.macLink">下载 Mac mini 版源码包 (.zip) →</a>
+            </div>
+          </div>
+
+          <div class="platform-card platform-card-highlight">
+            <div class="platform-top">
+              <span class="platform-icon" aria-hidden="true">📱</span>
+              <div>
+                <h4 data-i18n="dl.iosTitle">iOS (iPhone / iPad) · 独立 PWA & SwiftUI</h4>
+                <span class="platform-sub">Safari 一键添加桌面独立 App · 或 Xcode SwiftUI 工程</span>
+              </div>
+            </div>
+            <p data-i18n="dl.iosDesc">在 iPhone / iPad 用 Safari 打开本页并「添加到主屏幕」，即可离线/全屏运行并支持触控视线跟随与直连 AI；也提供原生 SwiftUI Xcode 工程供 Mac mini 编译真机包。</p>
+            <div class="platform-links">
+              <button type="button" class="text-link link-btn" id="iosPwaGuideBtn" data-i18n="dl.iosPwaBtn">查看 iPhone 添加到主屏幕教程 →</button>
+              <a href="https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiCompanion-iOS-2.1.2-Source.zip" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.iosSourceLink">下载 SwiftUI 原生工程 (.zip) →</a>
+            </div>
+          </div>
+
           <div class="platform-card">
             <div class="platform-top">
               <span class="platform-icon" aria-hidden="true">🤖</span>
@@ -334,7 +402,7 @@
                 <span class="platform-sub">SiCompanion-Android-0.1.3-preview.apk · ~18 MB</span>
               </div>
             </div>
-            <p data-i18n="dl.androidDesc">支持手机端基础陪伴、悬浮展示与局域网 TLS 配对同步（需配合 Windows 端协同预览模式使用，不适用于原生鸿蒙 5）。</p>
+            <p data-i18n="dl.androidDesc">支持手机端基础陪伴、悬浮展示与局域网 TLS 配对同步（需配合桌面端协同预览模式使用，不适用于原生鸿蒙 5）。</p>
             <a href="https://github.com/oierzhimo/si-companion/releases" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.androidLink">在 Releases 查看 Android 包 →</a>
           </div>
 
@@ -343,10 +411,10 @@
               <span class="platform-icon" aria-hidden="true">🧩</span>
               <div>
                 <h4 data-i18n="dl.sourceTitle">HarmonyOS 5 工程预览 & 完整源码</h4>
-                <span class="platform-sub">GPL-3.0 · Python / Java / ArkTS</span>
+                <span class="platform-sub">GPL-3.0 · Python / Swift / Java / ArkTS</span>
               </div>
             </div>
-            <p data-i18n="dl.sourceDesc">面向开发者的完整仓库，包含桌面端源码、Soul Engine 数据构建、QQ 多模态原型、HarmonyOS 5 工程预览与打包脚本。</p>
+            <p data-i18n="dl.sourceDesc">面向开发者的完整仓库，包含 Windows/macOS 桌面端源码、iOS SwiftUI 工程、Soul Engine 数据构建、QQ 原型与 HarmonyOS 5 工程预览。</p>
             <a href="https://github.com/oierzhimo/si-companion" target="_blank" rel="noopener noreferrer" class="text-link" data-i18n="dl.sourceLink">浏览 GitHub 源码 →</a>
           </div>
         </div>
@@ -369,13 +437,15 @@
           <li class="step-card">
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
-              <h3 data-i18n="step1.title">下载压缩包，并「完整解压」到普通文件夹</h3>
+              <h3 data-i18n="step1.title">按设备选择安装方式（Windows / Mac mini / iPhone & iPad）</h3>
               <p data-i18n="step1.desc">
-                点击上方的下载按钮获取 <code>SiDesktopPet-2.1.2-Windows-x64.zip</code>。下载完成后，<strong>右键点击该压缩包</strong> → 选择「全部解压缩」（或用 7-Zip / WinRAR 解压），解压到一个好找的位置，例如 <code>D:\SiDesktopPet</code>。
+                <strong>Windows：</strong>下载 <code>SiDesktopPet-2.1.2-Windows-x64.zip</code> 并右键「全部解压缩」到 <code>D:\SiDesktopPet</code>；<br />
+                <strong>Mac mini (macOS)：</strong>下载 <code>SiDesktopPet-2.1.2-macOS-Source.zip</code> 解压并双击 <code>start_macos.command</code> 即可运行（或执行 <code>bash tools/build_macos.sh</code> 生成 <code>.app</code> / <code>.dmg</code>）；<br />
+                <strong>iPhone / iPad (iOS)：</strong>用 Safari 打开本网站 → 底部「分享」→「添加到主屏幕」，无需越狱即可全屏独立使用！
               </p>
               <div class="callout callout-warn">
-                <strong data-i18n="step1.warnTitle">⚠️ 新手最容易踩的坑：</strong>
-                <span data-i18n="step1.warnBody">请务必<strong>完整解压整个压缩包</strong>后再运行！不要在压缩包预览窗口里直接双击 EXE，也不要只把 EXE 单独拖到桌面，否则程序会找不到素材和运行库。</span>
+                <strong data-i18n="step1.warnTitle">⚠️ 常见注意事项：</strong>
+                <span data-i18n="step1.warnBody">Windows 请务必<strong>完整解压整个压缩包</strong>后再运行；Mac mini 首次打开若遇“无法验证开发者”，在「系统设置 → 隐私与安全性」点「仍要打开」或执行 <code>xattr -cr /Applications/SiDesktopPet.app</code>。</span>
               </div>
             </div>
           </li>
@@ -522,7 +592,17 @@
 
           <details class="faq-item">
             <summary data-i18n="faq.q5">开启「鼠标穿透」后点不到小祀了怎么办？</summary>
-            <p data-i18n="faq.a5">按下键盘快捷键 Ctrl + Alt + S，或者在电脑右下角任务栏系统托盘找到小祀图标，右键选择「找回祀」即可立刻恢复可点击状态。</p>
+            <p data-i18n="faq.a5">在 Windows 按下 Ctrl + Alt + S，或在电脑任务栏/macOS 顶部菜单栏找到小祀图标，点击「找回祀」即可立刻恢复可点击状态。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q6">Mac mini 首次打开提示「无法验证开发者」怎么办？</summary>
+            <p data-i18n="faq.a6">打开「系统设置」→「隐私与安全性」，拉到底部点击「仍要打开」；或在终端执行一次 xattr -cr /Applications/SiDesktopPet.app 即可正常运行。也可以直接使用仓库根目录的 start_macos.command 从源码运行。</p>
+          </details>
+
+          <details class="faq-item">
+            <summary data-i18n="faq.q7">iPhone / iPad 不越狱、不装 Xcode 怎么装成桌面 App？</summary>
+            <p data-i18n="faq.a7">用 Safari 打开官网 https://oierzhimo.github.io/si-companion/（或你的广域网实时同步网址），点击底部分享图标 →「添加到主屏幕」，就能像原生 App 一样全屏运行、支持手指滑动让小祀眼神跟随，并在「实时同步」区开启直连 API 或绑定 Mac/Win 节点。</p>
           </details>
         </div>
       </div>
@@ -558,6 +638,8 @@
                 <label for="fbPlatform" data-i18n="fb.platformLabel">使用版本 / 平台</label>
                 <select id="fbPlatform" name="platform">
                   <option value="Windows v2.1.2">Windows v2.1.2</option>
+                  <option value="macOS v2.1.2 (Mac mini / Apple Silicon)">macOS v2.1.2 (Mac mini / Apple Silicon)</option>
+                  <option value="iOS (iPhone / iPad PWA / SwiftUI)">iOS (iPhone / iPad PWA / SwiftUI)</option>
                   <option value="Android v0.1.3-preview">Android v0.1.3-preview</option>
                   <option value="HarmonyOS / Source">HarmonyOS / Source</option>
                   <option value="还未下载 / Not downloaded yet" data-i18n="fb.platformNone">还未下载 / 咨询</option>
@@ -647,6 +729,25 @@
       </div>
     </div>
   </footer>
+
+  <!-- iOS Safari Add-to-Home-Screen Modal -->
+  <div class="pwa-modal-backdrop" id="iosPwaModal" hidden role="dialog" aria-modal="true" aria-labelledby="iosPwaTitle">
+    <div class="pwa-modal">
+      <div class="pwa-modal-head">
+        <h3 id="iosPwaTitle" data-i18n="iosModal.title">📱 在 iPhone / iPad 安装「小祀」独立 App</h3>
+        <button type="button" class="icon-btn" id="closeIosModalBtn" aria-label="Close">✕</button>
+      </div>
+      <ol class="mini-steps">
+        <li data-i18n="iosModal.step1">1. 使用 iPhone 或 iPad 的 <strong>Safari 浏览器</strong> 打开本页面。</li>
+        <li data-i18n="iosModal.step2">2. 点击底部工具栏中央的 <strong>「分享」图标（带向上箭头的方框）</strong>。</li>
+        <li data-i18n="iosModal.step3">3. 向下滑动菜单，选择 <strong>「添加到主屏幕」</strong> → 点击右上角 <strong>「添加」</strong>。</li>
+        <li data-i18n="iosModal.step4">4. 从手机桌面点击小祀图标启动：支持全屏刘海屏适配、手指拖动跟随眼神、触摸摸头，以及在上方「实时同步」区绑定你的 Mac mini / Windows 节点或直接填 DeepSeek API Key 独立对话。</li>
+      </ol>
+      <div class="pwa-modal-actions">
+        <button type="button" class="btn btn-primary" id="okIosModalBtn" data-i18n="iosModal.ok">我知道了</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

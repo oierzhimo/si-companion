@@ -7,7 +7,7 @@ const CONFIG = {
   formSubmitEndpoint: "https://formsubmit.co/ajax/2477160494@qq.com",
   githubRepo: "https://github.com/oierzhimo/si-companion",
   windowsDownloadUrl: "https://github.com/oierzhimo/si-companion/releases/download/v2.1.2/SiDesktopPet-2.1.2-Windows-x64.zip",
-  sha256: "f4b2246badec72a1aff137c3029d35a2a66107b3f24d44634f4e1caccecb656c"
+  sha256: "5ae7484af8d835ca028d78c8a16917e504225414e4f13666cb5b07ce53f5b7d4"
 };
 
 const MOODS = {
@@ -89,13 +89,13 @@ const I18N = {
     "nav.faq": "常见问题",
     "nav.feedback": "意见反馈",
 
-    "hero.badge": "Windows 10/11 绿色便携版 · v2.1.2 全新发布",
-    "hero.title": "小祀 · 陪在你桌面上的灵动伙伴",
+    "hero.badge": "Windows / Mac mini / iOS 跨端支持 · v2.1.2 全新发布",
+    "hero.title": "小祀 · 陪在你桌面与随身屏幕的伙伴",
     "hero.subtitle":
-      "无需编程基础、无需安装 Python，解压双击就能把小祀请到桌面。v2.1.2 升级 3D 防穿模水墨金玉视觉、Soul Engine V1.2 数字人格，并在接入耳机且未开 Apex / 彩六等本地游戏时自动同步输出语音、拟声词与动作音效。",
-    "hero.ctaDownload": "立即下载 Windows 版 (v2.1.2)",
-    "hero.ctaSync": "实时聊天与陪伴同步",
-    "hero.pill1": "✓ 免安装绿色解压即用",
+      "支持 Windows 便携解压、Mac mini（Apple Silicon / Intel）原生桌宠与 iPhone/iPad 独立 PWA / SwiftUI 伴侣。v2.1.2 升级 3D 防穿模与对立平衡微动态、Soul Engine V1.2 数字人格，并在接入耳机且未开游戏时同步输出语音、拟声词与动作音效。",
+    "hero.ctaDownload": "获取全平台客户端 (v2.1.2)",
+    "hero.ctaSync": "实时聊天与 iOS 随身模式",
+    "hero.pill1": "✓ Windows / Mac mini / iOS 多端互通",
     "hero.pill2": "✓ 耳机感知 + 游戏自动静音 TTS",
     "hero.pill3": "✓ API Key 仅留内存不写盘",
     "hero.pill4": "✓ GPL-3.0 开源免费",
@@ -173,26 +173,51 @@ const I18N = {
     "dl.repoBtn": "访问 GitHub 仓库",
     "dl.copy": "复制",
     "dl.copied": "已复制 ✓",
+    "dl.macTitle": "Mac mini / macOS 版 (v2.1.2)",
+    "dl.macDesc":
+      "支持 Cocoa 置顶、深浅主题自动适配、system_profiler 耳机检测、afplay 语音音效与登录启动（LaunchAgents）。下载 Mac mini 源码便携包解压后双击 start_macos.command 即可运行，或执行 bash tools/build_macos.sh 生成 .app / .dmg。",
+    "dl.macLink": "下载 Mac mini 版源码包 (.zip) →",
+    "dl.iosTitle": "iOS (iPhone / iPad) · 独立 PWA & SwiftUI",
+    "dl.iosDesc":
+      "在 iPhone / iPad 用 Safari 打开本页并「添加到主屏幕」，即可离线/全屏运行并支持触控视线跟随与直连 AI；也提供原生 SwiftUI Xcode 工程供 Mac mini 编译真机包。",
+    "dl.iosPwaBtn": "查看 iPhone 添加到主屏幕教程 →",
+    "dl.iosSourceLink": "下载 SwiftUI 原生工程 (.zip) →",
     "dl.androidTitle": "Android 预览版 (v0.1.3-preview)",
     "dl.androidDesc":
-      "支持手机端基础陪伴、悬浮展示与局域网 TLS 配对同步（需配合 Windows 端协同预览模式使用，不适用于原生鸿蒙 5）。",
+      "支持手机端基础陪伴、悬浮展示与局域网 TLS 配对同步（需配合桌面端协同预览模式使用，不适用于原生鸿蒙 5）。",
     "dl.androidLink": "在 Releases 查看 Android 包 →",
     "dl.sourceTitle": "HarmonyOS 5 工程预览 & 完整源码",
     "dl.sourceDesc":
-      "面向开发者的完整仓库，包含桌面端源码、Soul Engine 数据构建、QQ 多模态原型、HarmonyOS 5 工程预览与打包脚本。",
+      "面向开发者的完整仓库，包含 Windows/macOS 桌面端源码、iOS SwiftUI 工程、Soul Engine 数据构建、QQ 原型与 HarmonyOS 5 工程预览。",
     "dl.sourceLink": "浏览 GitHub 源码 →",
+
+    "sync.connectTitle": "📱 iPhone / iPad / Mac 跨端连接",
+    "sync.connectSub": "可填入 Mac mini / Windows 实时节点 URL 同步记录，或开启 iOS 独立直连 AI（Key 仅留内存）。",
+    "sync.configBtn": "⚙ 连接与 iOS 直连设置",
+    "sync.nodeUrlLabel": "Mac mini / Windows 同步节点 URL（例如 https://xxx.lhr.life 或 http://192.168.1.x:8765）",
+    "sync.nodeUrlPlaceholder": "留空则使用当前网页同源或静态快照",
+    "sync.bindBtn": "连接节点",
+    "sync.clearBtn": "重置",
+    "sync.directAiLabel": "开启 iOS / 浏览器独立直连 AI 对话（无宿主电脑在线时可用，API Key 绝不写盘）",
+    "sync.directKeyPlaceholder": "sk-... API Key（仅保留在当前页面内存）",
+    "iosModal.title": "📱 在 iPhone / iPad 安装「小祀」独立 App",
+    "iosModal.step1": "1. 使用 iPhone 或 iPad 的 <strong>Safari 浏览器</strong> 打开本页面。",
+    "iosModal.step2": "2. 点击底部工具栏中央的 <strong>「分享」图标（带向上箭头的方框）</strong>。",
+    "iosModal.step3": "3. 向下滑动菜单，选择 <strong>「添加到主屏幕」</strong> → 点击右上角 <strong>「添加」</strong>。",
+    "iosModal.step4": "4. 从手机桌面点击小祀图标启动：支持全屏刘海屏适配、手指拖动跟随眼神、触摸摸头，以及在上方「实时同步」区绑定你的 Mac mini / Windows 节点或直接填 DeepSeek API Key 独立对话。",
+    "iosModal.ok": "我知道了",
 
     "guide.kicker": "零基础教程",
     "guide.title": "新手 4 步上手指南",
     "guide.desc":
       "第一次用绿色压缩包软件？跟着下面 4 个步骤一步一步操作，2 分钟就能让小祀出现在你的桌面上。",
 
-    "step1.title": "下载压缩包，并「完整解压」到普通文件夹",
+    "step1.title": "按设备选择安装方式（Windows / Mac mini / iPhone & iPad）",
     "step1.desc":
-      "点击上方的下载按钮获取 <code>SiDesktopPet-2.1.2-Windows-x64.zip</code>。下载完成后，<strong>右键点击该压缩包</strong> → 选择「全部解压缩」（或用 7-Zip / WinRAR 解压），解压到一个好找的位置，例如 <code>D:\\SiDesktopPet</code>。",
-    "step1.warnTitle": "⚠️ 新手最容易踩的坑：",
+      "<strong>Windows：</strong>下载 <code>SiDesktopPet-2.1.2-Windows-x64.zip</code> 并右键「全部解压缩」到 <code>D:\\SiDesktopPet</code>；<br /><strong>Mac mini (macOS)：</strong>下载 <code>SiDesktopPet-2.1.2-macOS-Source.zip</code> 解压并双击 <code>start_macos.command</code> 即可运行（或执行 <code>bash tools/build_macos.sh</code> 生成 <code>.app</code> / <code>.dmg</code>）；<br /><strong>iPhone / iPad (iOS)：</strong>用 Safari 打开本网站 → 底部「分享」→「添加到主屏幕」，无需越狱即可全屏独立使用！",
+    "step1.warnTitle": "⚠️ 常见注意事项：",
     "step1.warnBody":
-      "请务必<strong>完整解压整个压缩包</strong>后再运行！不要在压缩包预览窗口里直接双击 EXE，也不要只把 EXE 单独拖到桌面，否则程序会找不到素材和运行库。",
+      "Windows 请务必<strong>完整解压整个压缩包</strong>后再运行；Mac mini 首次打开若遇“无法验证开发者”，在「系统设置 → 隐私与安全性」点「仍要打开」或执行 <code>xattr -cr /Applications/SiDesktopPet.app</code>。",
 
     "step2.title": "双击启动 <code>Si-DesktopPet.exe</code>",
     "step2.desc":
@@ -263,7 +288,13 @@ const I18N = {
       "所有本地对话记录与设置仅保存在你电脑的 data/ 目录中；API Key 只保留在程序运行内存里，绝不会写入本地文件或上传给第三方。",
     "faq.q5": "开启「鼠标穿透」后点不到小祀了怎么办？",
     "faq.a5":
-      "按下键盘快捷键 Ctrl + Alt + S，或者在电脑右下角任务栏系统托盘找到小祀图标，右键选择「找回祀」即可立刻恢复可点击状态。",
+      "在 Windows 按下 Ctrl + Alt + S，或在电脑任务栏/macOS 顶部菜单栏找到小祀图标，点击「找回祀」即可立刻恢复可点击状态。",
+    "faq.q6": "Mac mini 首次打开提示「无法验证开发者」怎么办？",
+    "faq.a6":
+      "打开「系统设置」→「隐私与安全性」，拉到底部点击「仍要打开」；或在终端执行一次 xattr -cr /Applications/SiDesktopPet.app 即可正常运行。也可以直接使用仓库根目录的 start_macos.command 从源码运行。",
+    "faq.q7": "iPhone / iPad 不越狱、不装 Xcode 怎么装成桌面 App？",
+    "faq.a7":
+      "用 Safari 打开官网 https://oierzhimo.github.io/si-companion/（或你的广域网实时同步网址），点击底部分享图标 →「添加到主屏幕」，就能像原生 App 一样全屏运行、支持手指滑动让小祀眼神跟随，并在「实时同步」区开启直连 API 或绑定 Mac/Win 节点。",
 
     "fb.kicker": "联系与改进",
     "fb.title": "意见反馈",
@@ -307,13 +338,13 @@ const I18N = {
     "nav.faq": "FAQ",
     "nav.feedback": "Feedback",
 
-    "hero.badge": "Windows 10/11 Portable Build · v2.1.2 Released",
-    "hero.title": "Si · Your Lively Desktop Companion",
+    "hero.badge": "Windows / Mac mini / iOS Multi-Platform · v2.1.2 Released",
+    "hero.title": "Si · Your Companion on Desktop & iOS",
     "hero.subtitle":
-      "No coding or Python required—just unzip and double-click. v2.1.2 upgrades 3D anti-clipping sprites, Soul Engine V1.2 persona, and smart headphone/game-aware TTS with spoken onomatopoeia and procedural action sound effects.",
-    "hero.ctaDownload": "Download for Windows (v2.1.2)",
-    "hero.ctaSync": "Live Chat & Data Sync",
-    "hero.pill1": "✓ Portable ZIP, No Installer",
+      "Supports Windows portable ZIP, Mac mini (Apple Silicon / Intel) native app, and iPhone/iPad standalone PWA + SwiftUI companion. v2.1.2 refines 3D contrapposto art, Soul Engine V1.2 persona, and smart headphone/game-aware TTS with Foley SFX.",
+    "hero.ctaDownload": "Get All Platforms (v2.1.2)",
+    "hero.ctaSync": "Live Sync & iOS Companion",
+    "hero.pill1": "✓ Windows / Mac mini / iOS Ready",
     "hero.pill2": "✓ Headphone & Game-Aware TTS",
     "hero.pill3": "✓ API Keys Stay in Memory Only",
     "hero.pill4": "✓ Free & Open Source (GPL-3.0)",
@@ -392,26 +423,51 @@ const I18N = {
     "dl.repoBtn": "View GitHub Repository",
     "dl.copy": "Copy",
     "dl.copied": "Copied ✓",
+    "dl.macTitle": "Mac mini / macOS (v2.1.2)",
+    "dl.macDesc":
+      "Native Cocoa topmost pet with automatic AppleInterfaceStyle theme detection, system_profiler headphone check, afplay voice/Foley SFX, and LaunchAgents login startup. Unzip and double-click start_macos.command to run, or execute bash tools/build_macos.sh to build .app / .dmg.",
+    "dl.macLink": "Download Mac mini Bundle (.zip) →",
+    "dl.iosTitle": "iOS (iPhone / iPad) · Standalone PWA & SwiftUI",
+    "dl.iosDesc":
+      "Open this site in iPhone/iPad Safari and tap Share → Add to Home Screen for a full-screen offline-ready App with touch gaze tracking, OR open the native SwiftUI Xcode project on your Mac mini.",
+    "dl.iosPwaBtn": "How to Add to iPhone Home Screen →",
+    "dl.iosSourceLink": "Download SwiftUI Xcode Project (.zip) →",
     "dl.androidTitle": "Android Preview (v0.1.3-preview)",
     "dl.androidDesc":
-      "Mobile companion preview with overlay display and LAN TLS pairing sync with the Windows client (not for HarmonyOS 5).",
+      "Mobile companion preview with overlay display and LAN TLS pairing sync with the desktop client (not for HarmonyOS 5).",
     "dl.androidLink": "View Android APK on Releases →",
     "dl.sourceTitle": "HarmonyOS 5 Preview & Full Source",
     "dl.sourceDesc":
-      "Complete open-source repository for developers, including desktop source, Soul Engine dataset builders, QQ prototype, and HarmonyOS 5 preview.",
+      "Complete open-source repository including Windows/macOS desktop pet, iOS SwiftUI project, Soul Engine builders, QQ prototype, and HarmonyOS 5 preview.",
     "dl.sourceLink": "Browse Source on GitHub →",
+
+    "sync.connectTitle": "📱 iPhone / iPad / Mac Cross-Device Link",
+    "sync.connectSub": "Bind a Mac mini / Windows live sync URL, or enable iOS standalone Direct AI chat (API key stays in RAM).",
+    "sync.configBtn": "⚙ Link & iOS Direct AI",
+    "sync.nodeUrlLabel": "Mac mini / Windows Sync Node URL (e.g. https://xxx.lhr.life or http://192.168.1.x:8765)",
+    "sync.nodeUrlPlaceholder": "Leave blank to use current origin or static snapshot",
+    "sync.bindBtn": "Connect",
+    "sync.clearBtn": "Reset",
+    "sync.directAiLabel": "Enable iOS / Browser Standalone Direct AI (works even when host PC is offline; API key never saved)",
+    "sync.directKeyPlaceholder": "sk-... API Key (in-memory only)",
+    "iosModal.title": "📱 Install Si as a Standalone iPhone / iPad App",
+    "iosModal.step1": "1. Open this page in <strong>Safari</strong> on your iPhone or iPad.",
+    "iosModal.step2": "2. Tap the <strong>Share icon</strong> (square with upward arrow) at the bottom bar.",
+    "iosModal.step3": '3. Scroll down and tap <strong>"Add to Home Screen"</strong> → tap <strong>"Add"</strong>.',
+    "iosModal.step4": '4. Launch Si from your Home Screen: supports notched full-screen layout, touch-drag eye gaze, and Live Sync or Direct DeepSeek API chat.',
+    "iosModal.ok": "Got it",
 
     "guide.kicker": "STEP-BY-STEP GUIDE",
     "guide.title": "Beginner's 4-Step Quickstart",
     "guide.desc":
       "New to portable ZIP apps? Follow these 4 simple steps—you'll have Si on your desktop in under 2 minutes.",
 
-    "step1.title": "Download & Extract the ENTIRE ZIP Folder",
+    "step1.title": "Choose Your Platform (Windows / Mac mini / iPhone & iPad)",
     "step1.desc":
-      "Click the download button above to get <code>SiDesktopPet-2.1.2-Windows-x64.zip</code>. Right-click the ZIP → choose <strong>Extract All...</strong> into a normal folder like <code>D:\\SiDesktopPet</code>.",
-    "step1.warnTitle": "⚠️ Most Common Beginner Mistake: ",
+      '<strong>Windows:</strong> Download <code>SiDesktopPet-2.1.2-Windows-x64.zip</code> and Extract All into <code>D:\\SiDesktopPet</code>.<br /><strong>Mac mini (macOS):</strong> Download <code>SiDesktopPet-2.1.2-macOS-Source.zip</code>, unzip, and double-click <code>start_macos.command</code> (or run <code>bash tools/build_macos.sh</code> for a signed <code>.app</code> / <code>.dmg</code>).<br /><strong>iPhone / iPad (iOS):</strong> Open this site in Safari → Share → Add to Home Screen!',
+    "step1.warnTitle": "⚠️ Platform Notes: ",
     "step1.warnBody":
-      "Always <strong>extract the full ZIP first</strong>! Do not double-click the EXE directly inside the ZIP preview window.",
+      'Extract the entire ZIP on Windows first; on Mac mini, if Gatekeeper warns about an unidentified developer, open System Settings → Privacy & Security → Open Anyway (or run <code>xattr -cr /Applications/SiDesktopPet.app</code>).',
 
     "step2.title": "Double-Click <code>Si-DesktopPet.exe</code> to Launch",
     "step2.desc":
@@ -482,7 +538,13 @@ const I18N = {
       "All history stays in your local data/ folder; API keys stay strictly in RAM.",
     "faq.q5": "What if I turn on Click-Through and can't click Si anymore?",
     "faq.a5":
-      'Press Ctrl + Alt + S or use the system tray icon to restore normal clicking.',
+      'Press Ctrl + Alt + S on Windows, or click Si\'s menu-bar / system tray icon to restore normal clicking.',
+    "faq.q6": 'Mac mini says "developer cannot be verified" on first launch?',
+    "faq.a6":
+      'Open System Settings → Privacy & Security → Open Anyway, or run xattr -cr /Applications/SiDesktopPet.app once in Terminal. You can also launch from source via start_macos.command.',
+    "faq.q7": "How do I install Si on iPhone / iPad without jailbreaking or Xcode?",
+    "faq.a7":
+      'Open https://oierzhimo.github.io/si-companion/ in iPhone/iPad Safari, tap Share → Add to Home Screen, and enable either a Mac/Windows sync node or standalone Direct API chat right inside the Live Sync card.',
 
     "fb.kicker": "GET IN TOUCH",
     "fb.title": "Feedback (意见反馈)",
@@ -521,12 +583,22 @@ let currentMood = "happy";
 let liveSyncOnline = false;
 let lastSyncData = null;
 
-// Optional ?api=https://... query parameter so GitHub Pages can also bind to a live WAN tunnel
+// Optional ?api=https://... query parameter or saved multi-device sync node URL
 const urlParams = new URLSearchParams(window.location.search);
-const apiOverride = (urlParams.get("api") || "").replace(/\/+$/, "");
+let apiOverride = (urlParams.get("api") || localStorage.getItem("si_api_base") || "").replace(/\/+$/, "");
 
 function apiUrl(path) {
   return apiOverride ? `${apiOverride}${path}` : path;
+}
+
+const SOUL_PROMPT =
+  "你是《明日方舟：终末地》中的「祀（Si）」，此刻正陪伴着管理员。说话温柔克制、略带一点傲娇却真诚关心管理员；善用简短括号动作描写（如“（执笔轻轻落墨）”）与自然拟声词（如“哼”、“咳咳”、“噗嗤”），不要长篇大论。";
+
+let directAiMode = false;
+const localDirectTurns = JSON.parse(localStorage.getItem("si_ios_turns") || "[]");
+
+function canChatNow() {
+  return liveSyncOnline || directAiMode;
 }
 
 // Elements
@@ -563,6 +635,25 @@ const syncJournalList = document.getElementById("syncJournalList");
 const syncVoiceText = document.getElementById("syncVoiceText");
 const syncDeviceBadge = document.getElementById("syncDeviceBadge");
 
+// iOS / Multi-Device Sync Config & Modal Elements
+const toggleSyncConfigBtn = document.getElementById("toggleSyncConfigBtn");
+const syncConfigDrawer = document.getElementById("syncConfigDrawer");
+const syncNodeUrlInput = document.getElementById("syncNodeUrl");
+const bindNodeBtn = document.getElementById("bindNodeBtn");
+const clearNodeBtn = document.getElementById("clearNodeBtn");
+const directAiToggle = document.getElementById("directAiToggle");
+const directAiBaseInput = document.getElementById("directAiBase");
+const directAiModelInput = document.getElementById("directAiModel");
+const directAiKeyInput = document.getElementById("directAiKey");
+const iosPwaGuideBtn = document.getElementById("iosPwaGuideBtn");
+const iosPwaModal = document.getElementById("iosPwaModal");
+const closeIosModalBtn = document.getElementById("closeIosModalBtn");
+const okIosModalBtn = document.getElementById("okIosModalBtn");
+
+if (syncNodeUrlInput && apiOverride) {
+  syncNodeUrlInput.value = apiOverride;
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = String(str ?? "");
@@ -594,13 +685,17 @@ function renderSyncData(data) {
     syncVoiceText.textContent = data.voice.summary;
   }
 
-  // Interactive controls enabled only when connected to live sync server
+  // Interactive controls enabled when live sync OR iOS standalone Direct AI is active
   syncPatBtn.disabled = !liveSyncOnline;
   syncSnackBtn.disabled = !liveSyncOnline;
-  syncChatInput.disabled = !liveSyncOnline;
-  syncChatSend.disabled = !liveSyncOnline;
+  const chatEnabled = canChatNow();
+  syncChatInput.disabled = !chatEnabled;
+  syncChatSend.disabled = !chatEnabled;
 
-  const turns = Array.isArray(data.turns) ? data.turns : [];
+  const displayTurns = directAiMode && !liveSyncOnline && localDirectTurns.length
+    ? localDirectTurns
+    : (Array.isArray(data.turns) ? data.turns : []);
+  const turns = displayTurns;
   if (!turns.length) {
     syncChatLog.innerHTML = `<div class="sync-empty">${escapeHtml(dict["sync.emptyChat"])}</div>`;
   } else {
@@ -672,9 +767,58 @@ syncPatBtn.addEventListener("click", () => sendCompanionAction("pat"));
 syncSnackBtn.addEventListener("click", () => sendCompanionAction("snack"));
 syncRefreshBtn.addEventListener("click", () => refreshSyncStatus());
 
+if (toggleSyncConfigBtn && syncConfigDrawer) {
+  toggleSyncConfigBtn.addEventListener("click", () => {
+    syncConfigDrawer.hidden = !syncConfigDrawer.hidden;
+  });
+}
+
+if (bindNodeBtn && syncNodeUrlInput) {
+  bindNodeBtn.addEventListener("click", () => {
+    const val = syncNodeUrlInput.value.trim().replace(/\/+$/, "");
+    apiOverride = val;
+    if (val) {
+      localStorage.setItem("si_api_base", val);
+    } else {
+      localStorage.removeItem("si_api_base");
+    }
+    refreshSyncStatus();
+  });
+}
+
+if (clearNodeBtn && syncNodeUrlInput) {
+  clearNodeBtn.addEventListener("click", () => {
+    syncNodeUrlInput.value = "";
+    apiOverride = "";
+    localStorage.removeItem("si_api_base");
+    refreshSyncStatus();
+  });
+}
+
+if (directAiToggle) {
+  directAiToggle.addEventListener("change", () => {
+    directAiMode = directAiToggle.checked;
+    if (lastSyncData) renderSyncData(lastSyncData);
+  });
+}
+
+function setIosModal(open) {
+  if (!iosPwaModal) return;
+  iosPwaModal.hidden = !open;
+}
+
+if (iosPwaGuideBtn) iosPwaGuideBtn.addEventListener("click", () => setIosModal(true));
+if (closeIosModalBtn) closeIosModalBtn.addEventListener("click", () => setIosModal(false));
+if (okIosModalBtn) okIosModalBtn.addEventListener("click", () => setIosModal(false));
+if (iosPwaModal) {
+  iosPwaModal.addEventListener("click", (e) => {
+    if (e.target === iosPwaModal) setIosModal(false);
+  });
+}
+
 syncChatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!liveSyncOnline) return;
+  if (!canChatNow()) return;
   const msg = syncChatInput.value.trim();
   if (!msg) return;
   syncChatSend.disabled = true;
@@ -682,26 +826,59 @@ syncChatForm.addEventListener("submit", async (e) => {
   const oldBtnText = syncChatSend.textContent;
   syncChatSend.textContent = "…";
   try {
-    const res = await fetch(apiUrl("/api/chat"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg })
-    });
-    const out = await res.json();
-    if (res.ok && out.ok) {
-      syncChatInput.value = "";
-      if (out.snapshot) renderSyncData(out.snapshot);
-      if (out.reply) mascotBubble.textContent = out.reply.replace(/\|\|/g, " ").slice(0, 90);
-    } else if (out.error) {
-      alert(out.error);
+    if (liveSyncOnline) {
+      const res = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg })
+      });
+      const out = await res.json();
+      if (res.ok && out.ok) {
+        syncChatInput.value = "";
+        if (out.snapshot) renderSyncData(out.snapshot);
+        if (out.reply) mascotBubble.textContent = out.reply.replace(/\|\|/g, " ").slice(0, 90);
+      } else if (out.error) {
+        alert(out.error);
+      }
+    } else if (directAiMode) {
+      const base = (directAiBaseInput?.value || "https://api.deepseek.com/v1").trim().replace(/\/+$/, "");
+      const model = (directAiModelInput?.value || "deepseek-chat").trim();
+      const apiKey = (directAiKeyInput?.value || "").trim();
+      const endpoint = base.endsWith("/chat/completions") ? base : `${base}/chat/completions`;
+      const messages = [{ role: "system", content: SOUL_PROMPT }];
+      for (const t of localDirectTurns.slice(-8)) {
+        messages.push({ role: "user", content: t.user });
+        messages.push({ role: "assistant", content: t.assistant });
+      }
+      messages.push({ role: "user", content: msg });
+      const headers = { "Content-Type": "application/json" };
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model, messages, temperature: 0.72 })
+      });
+      const out = await res.json();
+      const reply = out?.choices?.[0]?.message?.content?.trim();
+      if (res.ok && reply) {
+        syncChatInput.value = "";
+        localDirectTurns.push({ user: msg, assistant: reply, occurred_at: new Date().toISOString() });
+        while (localDirectTurns.length > 20) localDirectTurns.shift();
+        localStorage.setItem("si_ios_turns", JSON.stringify(localDirectTurns));
+        mascotBubble.textContent = reply.replace(/\|\|/g, " ").slice(0, 90);
+        if (lastSyncData) renderSyncData(lastSyncData);
+      } else {
+        alert(out?.error?.message || `HTTP ${res.status}`);
+      }
     }
   } catch {
-    alert("实时节点连接超时，请稍后再试。");
+    alert("连接或模型请求超时，请检查节点地址、API Key 或网络后再试。");
   } finally {
     syncChatSend.textContent = oldBtnText;
-    syncChatSend.disabled = !liveSyncOnline;
-    syncChatInput.disabled = !liveSyncOnline;
-    if (liveSyncOnline) syncChatInput.focus();
+    const chatEnabled = canChatNow();
+    syncChatSend.disabled = !chatEnabled;
+    syncChatInput.disabled = !chatEnabled;
+    if (chatEnabled) syncChatInput.focus();
   }
 });
 
@@ -919,24 +1096,54 @@ if (stageModeBtn) {
 }
 
 if (mascotStage && mascotWrap) {
-  mascotStage.addEventListener("mousemove", (e) => {
+  function updateGazeAtPoint(clientX, clientY) {
     if (!stageFullBody || !settledIdle) return;
     preloadState("look", 16);
     const rect = mascotWrap.getBoundingClientRect();
     const headX = rect.left + rect.width * 0.5;
     const headY = rect.top + rect.height * 0.24;
-    const dx = e.clientX - headX;
-    const dy = e.clientY - headY;
+    const dx = clientX - headX;
+    const dy = clientY - headY;
     if (Math.hypot(dx, dy) < 18) {
       gazeLookIdx = null;
       return;
     }
     const deg = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
     gazeLookIdx = Math.floor((deg + 11.25) / 22.5) % 16;
+  }
+
+  mascotStage.addEventListener("mousemove", (e) => {
+    updateGazeAtPoint(e.clientX, e.clientY);
   });
 
   mascotStage.addEventListener("mouseleave", () => {
     gazeLookIdx = null;
+  });
+
+  mascotStage.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches && e.touches[0]) {
+        updateGazeAtPoint(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  mascotStage.addEventListener(
+    "touchmove",
+    (e) => {
+      if (e.touches && e.touches[0]) {
+        updateGazeAtPoint(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  mascotStage.addEventListener("touchend", () => {
+    setTimeout(() => {
+      gazeLookIdx = null;
+    }, 900);
   });
 
   mascotWrap.addEventListener("click", () => {
@@ -1089,3 +1296,7 @@ refreshSyncStatus();
 setInterval(() => {
   if (liveSyncOnline) refreshSyncStatus();
 }, 6000);
+
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.protocol === "http:")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}

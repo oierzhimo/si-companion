@@ -1,7 +1,7 @@
 {
   "live": false,
   "version": "2.1.2",
-  "updated_at": "2026-11-27 07:37:50",
+  "updated_at": "2026-11-28 13:13:28",
   "device_id": "f1d0cf25-af16-4c",
   "stats": {
     "affinity": 0,
@@ -9,11 +9,11 @@
     "snacks": 0,
     "focus_sessions": 0,
     "mood": 85,
-    "total_minutes": 759
+    "total_minutes": 1345
   },
   "voice": {
-    "active": false,
-    "summary": "未检测到耳机输出 · 自动仅输出文本"
+    "active": true,
+    "summary": "已接入耳机（耳机 (2- Misiom-Scorpio Base) 2- Misiom-Scorpio Base）且未运行游戏 · 默认语音+文本同步输出"
   },
   "journal": [
     {
@@ -41,7 +41,7 @@
     {
       "user": "小祀，今天也在桌面上陪我一起忙吗？",
       "assistant": "（祀执笔在宣纸角落轻轻落墨，推过一杯温茶）哼，既然管理员都开口了，我就在这儿陪你待一会儿。戴上耳机且没打游戏的时候，我也会出声叫你的。",
-      "occurred_at": "2026-11-27 07:37:50"
+      "occurred_at": "2026-11-28 13:13:28"
     }
   ]
 }

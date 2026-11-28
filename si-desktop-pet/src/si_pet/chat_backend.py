@@ -289,14 +289,25 @@ def _ensure_local_voicestudio_running(profile_id: str, wait_seconds: float = 35.
         if check_voice_service(timeout=1.0, profile_id=profile_id) != 'unavailable':
             return
         if _AUTO_BACKEND_PROC is None or _AUTO_BACKEND_PROC.poll() is not None:
-            loc = Path(os.environ.get('APPDATA', str(Path.home() / 'AppData/Roaming'))) / 'VoiceStudio' / 'runtime-location.json'
-            try:
-                runtime = Path(json.loads(loc.read_text(encoding='utf-8'))['root'])
-            except (OSError, ValueError, KeyError, TypeError):
+            candidates = [
+                Path(os.environ.get('APPDATA', str(Path.home() / 'AppData/Roaming'))) / 'VoiceStudio' / 'runtime-location.json',
+                Path.home() / 'Library' / 'Application Support' / 'VoiceStudio' / 'runtime-location.json',
+            ]
+            runtime = None
+            for loc in candidates:
+                try:
+                    runtime = Path(json.loads(loc.read_text(encoding='utf-8'))['root'])
+                    break
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
+            if runtime is None:
                 return
-            py = runtime / 'project' / '.venv' / 'Scripts' / 'python.exe'
+            py = next(
+                (p for p in (runtime / 'project' / '.venv' / 'Scripts' / 'python.exe', runtime / 'project' / '.venv' / 'bin' / 'python') if p.is_file()),
+                None,
+            )
             main_py = runtime / 'project' / 'backend' / 'main.py'
-            if not py.is_file() or not main_py.is_file():
+            if py is None or not main_py.is_file():
                 return
             env = os.environ.copy()
             env.setdefault('OMNIVOICE_TTS_BACKEND', 'audiocpp')

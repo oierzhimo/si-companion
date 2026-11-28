@@ -1,0 +1,35 @@
+name: SiCompanion
+options:
+  bundleIdPrefix: com.sicompanion
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+packages:
+  SiCompanionCore:
+    path: .
+targets:
+  SiCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: SiCompanionApp
+    resources:
+      - path: SiCompanionApp/Resources
+    dependencies:
+      - package: SiCompanionCore
+        product: SiCompanionCore
+    info:
+      path: SiCompanionApp/Info.plist
+      properties:
+        CFBundleDisplayName: 小祀
+        CFBundleShortVersionString: "2.1.2"
+        CFBundleVersion: "20102"
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: "用于与同一局域网的 Mac mini 或 Windows 小祀桌宠实时同步对话与相伴记录。"

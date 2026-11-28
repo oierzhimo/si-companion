@@ -248,13 +248,15 @@ class Panel(QWidget):
         ]:
             cb=QCheckBox(title);cb.setChecked(self.ctrl.store[key]);cb.toggled.connect(lambda value,k=key:self.setting(k,value));self.checks[key]=cb;bl.addWidget(cb)
         bl.addSpacing(8);bl.addWidget(label('窗口与系统集成','subhead'))
+        click_label='鼠标穿透（从顶部菜单栏图标找回）' if native.MACOS else '鼠标穿透（从托盘找回；快捷键 Ctrl+Alt+S）'
+        start_label='登录 macOS 时启动' if native.MACOS else ('登录 Windows 时启动' if native.WINDOWS else '开机登录时启动')
         for title,key in [
             ('可站在普通窗口顶边','window_edges'),
             ('全屏应用时自动隐藏，退出全屏后恢复','hide_fullscreen'),
             ('始终在其他窗口上方','topmost'),
-            ('鼠标穿透（从托盘找回；快捷键 Ctrl+Alt+S）','clickthrough'),
+            (click_label,'clickthrough'),
             ('手动控制（选中桌宠后使用方向键）','manual'),
-            ('登录 Windows 时启动','auto_start'),
+            (start_label,'auto_start'),
         ]:
             cb=QCheckBox(title);cb.setChecked(self.ctrl.store[key]);cb.toggled.connect(lambda value,k=key:self.setting(k,value));self.checks[key]=cb;bl.addWidget(cb)
         l.addWidget(behav)
@@ -318,7 +320,7 @@ class Panel(QWidget):
         w=QWidget();l=QVBoxLayout(w);l.setContentsMargins(0,0,0,0);l.setSpacing(16)
         l.addWidget(self.heading('祀 / SI',f'桌面很小，也装得下片刻自在 · v{__version__}'))
         text=QTextBrowser();text.setOpenExternalLinks(True)
-        text.setHtml(f'''<h2>独立的桌面伙伴（{html.escape(__version__)}）</h2><p>一款绿色便携的 Windows 桌宠。使用本地 3D 离线渲染动作帧组与表情头像，自动适配系统深浅色与水墨金玉视觉风格，基础陪伴完全离线运行；可选联网对话支持本机 Ollama、DeepSeek 官方 API 及自定义学校/第三方 OpenAI 兼容接口，也可搭配本机 VoiceStudio 合成语音。</p><h3>陪伴方式</h3><p>对管理员采用熟悉、放松而克制的互动。摸头、点心、专注计时、五个话题短句及日常动态反馈均由本地状态与预设驱动。安静陪伴与靠边坐好可在工作时减少打扰。</p><h3>适用范围</h3><p>Windows 10 / 11（64 位）。普通窗口顶边停留与多显示器适配依赖系统窗口几何，支持随文件夹整体迁移存档。</p><h3>署名与许可</h3><p>行为设计参考 <a href="https://github.com/isHarryh/Ark-Pets">Ark-Pets</a>。代码：GPL-3.0。图形框架：PySide6 / Qt，LGPL-3.0。角色“祀”及《明日方舟：终末地》相关权利属于原权利人；3D 源模型仅供本地离线光栅化展示与非商业同人交流，不含商业授权或二次配布权利。</p>''')
+        text.setHtml(f'''<h2>独立的桌面伙伴（{html.escape(__version__)}）</h2><p>一款支持 Windows 与 Mac mini（Apple Silicon / Intel）的绿色便携跨端桌宠，并配套 iOS（PWA + SwiftUI）、Android 与 HarmonyOS 客户端。使用本地 3D 离线渲染动作帧组与表情头像，自动适配系统深浅色与水墨金玉视觉风格，基础陪伴完全离线运行；可选联网对话支持本机 Ollama、DeepSeek 官方 API 及自定义学校/第三方 OpenAI 兼容接口，也可搭配本机 VoiceStudio 合成语音。</p><h3>陪伴方式</h3><p>对管理员采用熟悉、放松而克制的互动。摸头、点心、专注计时、五个话题短句及日常动态反馈均由本地状态与预设驱动。安静陪伴与靠边坐好可在工作时减少打扰。</p><h3>适用范围</h3><p>Windows 10 / 11（64 位）、macOS 13+（Mac mini M 系列 / Intel），以及 iPhone / iPad（Safari 添加到主屏幕独立 PWA 或 SwiftUI 工程）。Windows 上支持普通窗口顶边停留与多显示器适配；macOS 使用 <code>~/Library/Application Support/SiDesktopPet</code> 保存便携与打包存档，iOS 可接入实时同步节点或直连 API。</p><h3>署名与许可</h3><p>行为设计参考 <a href="https://github.com/isHarryh/Ark-Pets">Ark-Pets</a>。代码：GPL-3.0。图形框架：PySide6 / Qt，LGPL-3.0。角色“祀”及《明日方舟：终末地》相关权利属于原权利人；3D 源模型仅供本地离线光栅化展示与非商业同人交流，不含商业授权或二次配布权利。</p>''')
         l.addWidget(text,1);l.addWidget(button('查看项目文件',lambda:QDesktopServices.openUrl(QUrl.fromLocalFile(str(app_root())))))
         return w
 

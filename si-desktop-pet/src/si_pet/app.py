@@ -23,6 +23,7 @@ class RecoveryHotkey(QAbstractNativeEventFilter):
     def __init__(self,fn):super().__init__();self.fn=fn
     def nativeEventFilter(self,event_type,message):
         if native.WINDOWS:
+            import ctypes.wintypes
             msg=ctypes.wintypes.MSG.from_address(int(message))
             if msg.message==0x0312 and msg.wParam==0x5351:
                 QTimer.singleShot(0,self.fn);return True,0
@@ -36,6 +37,8 @@ def configure_logging():
         candidates.append(data_root()/'app.log')
     except OSError:
         pass
+    if sys.platform=='darwin':
+        candidates.append(Path.home()/'Library'/'Logs'/'SiDesktopPet'/'app.log')
     candidates.append(Path(os.environ.get('LOCALAPPDATA',tempfile.gettempdir()))/'SiDesktopPet'/'app.log')
     candidates.append(Path(tempfile.gettempdir())/'SiDesktopPet'/'app.log')
     logger=logging.getLogger()

@@ -1,13 +1,25 @@
-"""Windows integration: visible window ledges, tray recovery hotkey, startup opt-in."""
+"""Platform integration: visible window ledges, hotkey, startup opt-in, audio/game guard & WAV playback."""
 import ctypes
+import json
 import os
+import plistlib
+import shutil
+import subprocess
 import sys
-from ctypes import wintypes as w
+import threading
+from pathlib import Path
 from .physics import Platform, visible_segments
 
-WINDOWS = sys.platform=='win32'
+WINDOWS = sys.platform == 'win32'
+MACOS = sys.platform == 'darwin'
+
+try:
+    import winsound as _winsound
+except ImportError:
+    _winsound = None
 
 if WINDOWS:
+    from ctypes import wintypes as w
     user=ctypes.WinDLL('user32',use_last_error=True)
     dwm=ctypes.WinDLL('dwmapi',use_last_error=True)
     user.GetWindowLongW.argtypes=[w.HWND,ctypes.c_int]
@@ -142,7 +154,30 @@ def monitor_origins():
     cb=cbtype(collect);user.EnumDisplayMonitors(None,None,cb,0)
     return result
 
-def set_startup(enabled):
+def set_startup(enabled, *, launch_agents_dir=None):
+    if MACOS or launch_agents_dir is not None:
+        agent_dir = Path(launch_agents_dir) if launch_agents_dir is not None else (Path.home() / 'Library' / 'LaunchAgents')
+        plist_path = agent_dir / 'com.sicompanion.desktoppet.plist'
+        if enabled:
+            if getattr(sys, 'frozen', False):
+                args = [sys.executable, '--quiet']
+            else:
+                args = [sys.executable, str(Path(__file__).resolve().parents[2] / 'main.py'), '--quiet']
+            payload = {
+                'Label': 'com.sicompanion.desktoppet',
+                'ProgramArguments': args,
+                'RunAtLoad': True,
+                'KeepAlive': False,
+            }
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            plist_path.write_bytes(plistlib.dumps(payload))
+        else:
+            try:
+                plist_path.unlink(missing_ok=True)
+            except TypeError:  # Python < 3.8 fallback
+                if plist_path.exists():
+                    plist_path.unlink()
+        return
     if not WINDOWS:return
     import winreg
     if getattr(sys,'frozen',False): command=f'"{sys.executable}" --quiet'
@@ -203,9 +238,27 @@ BLOCKED_GAME_PROCESSES = frozenset({
     'starrail.exe',
 })
 
+MACOS_BLOCKED_GAME_PROCESSES = frozenset({
+    'cs2',
+    'dota2',
+    'league of legends',
+    'baldursgate3',
+    'cyberpunk2077',
+    'residentevil4',
+    'no mans sky',
+    'crossover',
+    'whisky',
+    'wine64-preloader',
+    'r5apex',
+    'rainbowsix',
+    'genshinimpact',
+    'starrail',
+})
+
 _HEADPHONE_NAME_HINTS = (
     '耳机', '耳麦', '头戴', '耳塞', '入耳',
     'headphone', 'headset', 'earphone', 'earbud', 'airpods', 'buds',
+    'external headphones', 'beats', 'bose qc', 'sennheiser',
     'wh-1000', 'wf-1000', 'linkbuds', 'inzone',
     'hyperx', 'cloud ii', 'cloud iii', 'cloud alpha', 'cloud stinger',
     'arctis', 'kraken', 'blackshark', 'barracuda',
@@ -216,6 +269,7 @@ _NON_HEADPHONE_NAME_HINTS = (
     'digital output', 's/pdif', 'spdif', 'optical',
     'amd high definition audio', 'nvidia high definition audio',
     'intel(r) display audio', 'displayport', 'hdmi',
+    'mac mini speakers', 'macbook', 'built-in output', 'internal speakers', 'studio display',
 )
 
 # EndpointFormFactor enum values in Windows mmdeviceapi.h
@@ -228,39 +282,40 @@ _audio_cache = (0.0, False, '')
 _game_cache = (0.0, (), None)
 
 
-class _GUID(ctypes.Structure):
-    _fields_ = [
-        ('Data1', w.DWORD),
-        ('Data2', w.WORD),
-        ('Data3', w.WORD),
-        ('Data4', ctypes.c_ubyte * 8),
-    ]
+if WINDOWS:
+    class _GUID(ctypes.Structure):
+        _fields_ = [
+            ('Data1', w.DWORD),
+            ('Data2', w.WORD),
+            ('Data3', w.WORD),
+            ('Data4', ctypes.c_ubyte * 8),
+        ]
 
 
-class _PROPERTYKEY(ctypes.Structure):
-    _fields_ = [('fmtid', _GUID), ('pid', w.DWORD)]
+    class _PROPERTYKEY(ctypes.Structure):
+        _fields_ = [('fmtid', _GUID), ('pid', w.DWORD)]
 
 
-class _PROPVARIANT_UNION(ctypes.Union):
-    _fields_ = [
-        ('ulVal', w.ULONG),
-        ('pwszVal', w.LPWSTR),
-        ('_pad', ctypes.c_ubyte * 16),
-    ]
+    class _PROPVARIANT_UNION(ctypes.Union):
+        _fields_ = [
+            ('ulVal', w.ULONG),
+            ('pwszVal', w.LPWSTR),
+            ('_pad', ctypes.c_ubyte * 16),
+        ]
 
 
-class _PROPVARIANT(ctypes.Structure):
-    _fields_ = [
-        ('vt', w.USHORT),
-        ('wReserved1', w.USHORT),
-        ('wReserved2', w.USHORT),
-        ('wReserved3', w.USHORT),
-        ('val', _PROPVARIANT_UNION),
-    ]
+    class _PROPVARIANT(ctypes.Structure):
+        _fields_ = [
+            ('vt', w.USHORT),
+            ('wReserved1', w.USHORT),
+            ('wReserved2', w.USHORT),
+            ('wReserved3', w.USHORT),
+            ('val', _PROPVARIANT_UNION),
+        ]
 
 
-def _make_guid(d1, d2, d3, b0, b1, b2, b3, b4, b5, b6, b7):
-    return _GUID(d1, d2, d3, (ctypes.c_ubyte * 8)(b0, b1, b2, b3, b4, b5, b6, b7))
+    def _make_guid(d1, d2, d3, b0, b1, b2, b3, b4, b5, b6, b7):
+        return _GUID(d1, d2, d3, (ctypes.c_ubyte * 8)(b0, b1, b2, b3, b4, b5, b6, b7))
 
 
 def _classify_audio_endpoint(form_factor: int | None, friendly_name: str) -> bool:
@@ -277,8 +332,60 @@ def _classify_audio_endpoint(form_factor: int | None, friendly_name: str) -> boo
     return False
 
 
+def _parse_macos_audio_profiler(raw_json: str) -> tuple[int | None, str]:
+    """Parse ``system_profiler SPAudioDataType -json`` output for default output device."""
+    try:
+        data = json.loads(raw_json or '{}')
+    except (ValueError, TypeError):
+        return None, ''
+    sections = data.get('SPAudioDataType') or []
+    devices: list[dict] = []
+
+    def _walk(node):
+        if isinstance(node, dict):
+            if '_items' in node and isinstance(node['_items'], list):
+                for child in node['_items']:
+                    _walk(child)
+            if 'coreaudio_default_audio_output_device' in node or '_name' in node:
+                devices.append(node)
+        elif isinstance(node, list):
+            for child in node:
+                _walk(child)
+
+    _walk(sections)
+    for dev in devices:
+        if str(dev.get('coreaudio_default_audio_output_device', '')).lower() == 'spaudio_yes':
+            name = str(dev.get('_name', '')).strip()
+            source = str(dev.get('coreaudio_output_source', '')).strip()
+            combined = f'{name} {source}'.strip()
+            if 'headphone' in source.lower() or _classify_audio_endpoint(None, combined):
+                return ENDPOINT_FORMFACTOR_HEADPHONES, name or source
+            return None, name or source
+    return None, ''
+
+
+def _detect_macos_audio_endpoint() -> tuple[int | None, str]:
+    try:
+        res = subprocess.run(
+            ['system_profiler', 'SPAudioDataType', '-json'],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=2.5,
+            check=False,
+        )
+        if res.returncode == 0:
+            return _parse_macos_audio_profiler(res.stdout)
+    except Exception:
+        pass
+    return None, ''
+
+
 def _detect_default_audio_endpoint() -> tuple[int | None, str]:
-    """Return ``(form_factor, friendly_name)`` of the active Windows default render endpoint."""
+    """Return ``(form_factor, friendly_name)`` of the active default render endpoint."""
+    if MACOS:
+        return _detect_macos_audio_endpoint()
     if not WINDOWS:
         return None, ''
     ole32 = ctypes.WinDLL('ole32', use_last_error=True)
@@ -415,10 +522,11 @@ def _fallback_waveout_name() -> tuple[int | None, str]:
 
 
 def default_audio_endpoint_info(*, force_refresh: bool = False) -> tuple[bool, str]:
-    """Return ``(is_headphone, endpoint_label)`` with a 1.5s cache."""
+    """Return ``(is_headphone, endpoint_label)`` with a 1.5s/4s cache."""
     global _audio_cache
     now = _time.monotonic()
-    if not force_refresh and now - _audio_cache[0] < 1.5:
+    ttl = 4.0 if MACOS else 1.5
+    if not force_refresh and now - _audio_cache[0] < ttl:
         return _audio_cache[1], _audio_cache[2]
     form_factor, friendly = _detect_default_audio_endpoint()
     active = _classify_audio_endpoint(form_factor, friendly)
@@ -433,7 +541,23 @@ def is_headphone_output_active(*, force_refresh: bool = False) -> bool:
 
 
 def _list_process_names() -> set[str]:
-    """Enumerate running process executable names in lowercase via Toolhelp32."""
+    """Enumerate running process executable names in lowercase."""
+    if MACOS:
+        try:
+            res = subprocess.run(
+                ['ps', '-axo', 'comm='],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=1.5,
+                check=False,
+            )
+            if res.returncode == 0:
+                return {Path(line.strip()).name.lower() for line in res.stdout.splitlines() if line.strip()}
+        except Exception:
+            pass
+        return set()
     if not WINDOWS:
         return set()
     kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -505,12 +629,90 @@ def running_blocked_game(*, extra_names=(), force_refresh: bool = False) -> str 
     now = _time.monotonic()
     if not force_refresh and _game_cache[1] == extra_tuple and now - _game_cache[0] < 2.0:
         return _game_cache[2]
-    blocked = BLOCKED_GAME_PROCESSES | set(extra_tuple)
     running = _list_process_names()
+    blocked = set(BLOCKED_GAME_PROCESSES) | set(extra_tuple)
+    if MACOS or any(not proc.endswith('.exe') for proc in running):
+        blocked |= MACOS_BLOCKED_GAME_PROCESSES
+        blocked |= {item[:-4] if item.endswith('.exe') else item for item in BLOCKED_GAME_PROCESSES | set(extra_tuple)}
     matched = sorted(blocked & running)
     found = matched[0] if matched else None
     _game_cache = (now, extra_tuple, found)
     return found
+
+
+_AFPLAY_LOCK = threading.Lock()
+_AFPLAY_PROC = None
+
+
+def _afplay_binary() -> str | None:
+    if not MACOS:
+        return None
+    cand = '/usr/bin/afplay'
+    return cand if Path(cand).is_file() else shutil.which('afplay')
+
+
+def has_audio_playback() -> bool:
+    """Return True when WAV playback is available on the current OS."""
+    if WINDOWS:
+        return _winsound is not None
+    if MACOS:
+        return _afplay_binary() is not None
+    return False
+
+
+def play_wav_file(path, *, async_play: bool = True) -> bool:
+    """Play a WAV file via Windows winsound or macOS afplay."""
+    wav_path = str(path)
+    if WINDOWS and _winsound is not None:
+        flags = _winsound.SND_FILENAME | _winsound.SND_NODEFAULT
+        if async_play:
+            flags |= _winsound.SND_ASYNC
+        _winsound.PlaySound(wav_path, flags)
+        return True
+    if MACOS:
+        afplay = _afplay_binary()
+        if not afplay:
+            return False
+        stop_wav_playback()
+        if async_play:
+            proc = subprocess.Popen(
+                [afplay, wav_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+            with _AFPLAY_LOCK:
+                global _AFPLAY_PROC
+                _AFPLAY_PROC = proc
+        else:
+            subprocess.run(
+                [afplay, wav_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                check=False,
+            )
+        return True
+    return False
+
+
+def stop_wav_playback() -> None:
+    """Stop any currently playing asynchronous WAV audio."""
+    if WINDOWS and _winsound is not None:
+        _winsound.PlaySound(None, 0)
+    global _AFPLAY_PROC
+    with _AFPLAY_LOCK:
+        proc = _AFPLAY_PROC
+        _AFPLAY_PROC = None
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=1.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
 
 def voice_output_allowed(store, *, force_refresh: bool = False) -> tuple[bool, str]:

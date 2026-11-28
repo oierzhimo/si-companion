@@ -1,6 +1,7 @@
-"""Adaptive Windows Light / Dark theme palettes and stylesheets for SiDesktopPet."""
+"""Adaptive Windows & macOS Light / Dark theme palettes and stylesheets for SiDesktopPet."""
 from __future__ import annotations
 
+import subprocess
 import sys
 import weakref
 
@@ -134,6 +135,26 @@ def _windows_apps_dark_mode() -> bool | None:
         return None
 
 
+def _macos_dark_mode() -> bool | None:
+    if sys.platform != 'darwin':
+        return None
+    try:
+        res = subprocess.run(
+            ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=1.0,
+            check=False,
+        )
+        if res.returncode == 0 and 'dark' in (res.stdout or '').lower():
+            return True
+        return False
+    except Exception:
+        return None
+
+
 def is_dark_theme(app=None) -> bool:
     """Return True when the active OS/Qt theme is dark mode."""
     app = app or QApplication.instance()
@@ -155,6 +176,10 @@ def is_dark_theme(app=None) -> bool:
     if win_dark is not None:
         return win_dark
 
+    mac_dark = _macos_dark_mode()
+    if mac_dark is not None:
+        return mac_dark
+
     if app is not None:
         try:
             return app.palette().color(QPalette.ColorRole.Window).lightness() < 128
@@ -172,7 +197,7 @@ def theme_colors(dark: bool | None = None) -> dict:
 def panel_stylesheet(dark: bool | None = None) -> str:
     c = theme_colors(dark)
     return (
-        f'QWidget{{font-family:"Microsoft YaHei UI","Segoe UI";font-size:13px;color:{c["text"]};}}'
+        f'QWidget{{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Segoe UI",sans-serif;font-size:13px;color:{c["text"]};}}'
         f'QWidget#panel{{background:{c["window_bg"]};}}'
         f'QFrame#sidebar{{background:{c["sidebar_bg"]};border-right:1px solid {c["border_soft"]};}}'
         f'QLabel{{background:transparent;color:{c["text"]};}}'
@@ -214,7 +239,7 @@ def panel_stylesheet(dark: bool | None = None) -> str:
 def dialog_stylesheet(dark: bool | None = None) -> str:
     c = theme_colors(dark)
     return (
-        f'QDialog{{background:{c["dialog_bg"]};color:{c["text"]};font-family:"Microsoft YaHei UI","Segoe UI";font-size:13px;}}'
+        f'QDialog{{background:{c["dialog_bg"]};color:{c["text"]};font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Segoe UI",sans-serif;font-size:13px;}}'
         f'QDialog QLabel{{background:transparent;color:{c["text"]};}}'
         f'QDialog QLabel#muted{{color:{c["muted_text"]};font-size:12px;}}'
         f'QDialog QFrame#drawer{{background:{c["card_bg"]};border:1px solid {c["border_soft"]};border-radius:12px;}}'

@@ -14,6 +14,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 mimetypes.add_type('image/webp', '.webp')
+mimetypes.add_type('application/manifest+json', '.webmanifest')
+mimetypes.add_type('application/javascript; charset=utf-8', '.js')
 import os
 from pathlib import Path
 import sys
@@ -150,7 +152,6 @@ def handle_live_chat(user_text: str) -> dict:
             def _bg_speak():
                 try:
                     import tempfile
-                    import winsound
                     from si_pet.chat_backend import synthesize_voice
                     from si_pet.voice import scaled_wav
 
@@ -162,7 +163,7 @@ def handle_live_chat(user_text: str) -> dict:
                         tmp = Path(tf.name)
                     scaled = scaled_wav(tmp, int(float(store['voice_volume'])))
                     try:
-                        winsound.PlaySound(str(scaled), winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+                        native.play_wav_file(scaled, async_play=False)
                     finally:
                         for p in (scaled, tmp):
                             Path(p).unlink(missing_ok=True)

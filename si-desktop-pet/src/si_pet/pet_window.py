@@ -19,9 +19,11 @@ class Bubble(QWidget):
         self.setWindowFlags(Qt.WindowType.ToolTip|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint|Qt.WindowType.WindowTransparentForInput)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        if native.MACOS:
+            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow,True)
         self.avatar=QLabel(self);self.avatar.setFixedSize(32,32);self.avatar.hide()
         self.text=QLabel(self);self.text.setWordWrap(True)
-        self.text.setStyleSheet('color:#f4f2ea;background:transparent;font:13px "Microsoft YaHei UI";')
+        self.text.setStyleSheet('color:#f4f2ea;background:transparent;font:13px "PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Segoe UI";')
         self.resize(324,104)
         self._fade=1.0;self._base_opacity=1.0
         self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.timeout.connect(self.hide)
@@ -98,6 +100,8 @@ class PetWindow(QWidget):
         self.setWindowTitle('祀 · 桌面伙伴')
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        if native.MACOS:
+            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow,True)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.ctrl.speech.connect(lambda text:self.bubble.speak(text,self))
@@ -174,7 +178,7 @@ class PetWindow(QWidget):
     def paintEvent(self,event):
         painter=QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform);painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         s=self.ctrl.store['scale'];state,index=self.ctrl.animation();dpr=self.devicePixelRatioF()
         pix=self.ctrl.sprites.pixmap(state,index,s,dpr)
         if self.ctrl.store['shadow']:

@@ -1015,7 +1015,8 @@ class MultimodalDialog(QDialog):
             except Exception:
                 extra_g = ''
         blocked_now = native.running_blocked_game(extra_names=extra_g, force_refresh=True) if store_now is not None else None
-        if voice_bytes and winsound is not None and not blocked_now:
+        can_play = winsound is not None or native.has_audio_playback()
+        if voice_bytes and can_play and not blocked_now:
             try:
                 self.status.setText('已保存，语音与文本同步输出中。')
             except RuntimeError:
@@ -1046,7 +1047,7 @@ class MultimodalDialog(QDialog):
                 vol = int(float(store['voice_volume']))
             except Exception:
                 vol = 65
-        if vol <= 0 or winsound is None:
+        if vol <= 0 or (winsound is None and not native.has_audio_playback()):
             return
 
         def _play():
@@ -1057,7 +1058,10 @@ class MultimodalDialog(QDialog):
                     f.write(wav_bytes)
                     tmp_path = Path(f.name)
                 scaled_path = scaled_wav(tmp_path, vol)
-                winsound.PlaySound(str(scaled_path), winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+                if winsound is not None:
+                    winsound.PlaySound(str(scaled_path), winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+                else:
+                    native.play_wav_file(scaled_path, async_play=False)
             except Exception:
                 pass
             finally:

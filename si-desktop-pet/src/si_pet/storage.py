@@ -27,7 +27,14 @@ def app_root():
 def resource_root():
     return Path(getattr(sys,'_MEIPASS',app_root()))
 
+def _macos_app_support_dir():
+    return Path.home()/'Library'/'Application Support'/'SiDesktopPet'/'data'
+
 def data_root():
+    if sys.platform=='darwin' and (getattr(sys,'frozen',False) or '.app/Contents/' in app_root().as_posix()):
+        path=_macos_app_support_dir()
+        path.mkdir(parents=True,exist_ok=True)
+        return path
     path=app_root()/'data'
     try:
         path.mkdir(exist_ok=True)
@@ -35,7 +42,10 @@ def data_root():
         probe.write_text('ok',encoding='utf-8');probe.unlink()
         return path
     except OSError:
-        path=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'SiDesktopPet'
+        if sys.platform=='darwin':
+            path=_macos_app_support_dir()
+        else:
+            path=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'SiDesktopPet'
         path.mkdir(parents=True,exist_ok=True)
         return path
 
